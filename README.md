@@ -1,3 +1,6 @@
+Obs.: caso o app esteja no modo "sleeping" (dormindo) ao entrar, basta clicar no botão que estará disponível e aguardar, para ativar o mesmo. 
+![print](https://github.com/user-attachments/assets/342a211c-30f1-47c2-8a72-d32c4c29d4a4)
+
 # 🎮 AryRoot - Quiz Game Multiplayer
 
 O AryRoot é um web app interativo de quiz multiplayer, construído em Python com Streamlit. Ele permite que professores criem e gerenciem jogos de perguntas e respostas, e que alunos participem em tempo real.
