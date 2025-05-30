@@ -49,8 +49,8 @@ def render_student_home():
         current_game = Game.get_by_code(game_code.upper()) 
         if current_game:
             if current_game.status == "waiting":
-                with st.spinner("Entrando no jogo..."): # Adicionado spinner
-                    added_successfully = current_game.add_player(nickname, selected_icon_value) 
+                with st.spinner("Entrando no jogo..."): 
+                    added_successfully = current_game.add_player(nickname, selected_icon_value) # add_player agora salva no SQLite
                 
                 if added_successfully:
                     st.session_state.username = nickname
@@ -68,8 +68,14 @@ def render_student_home():
             st.error("Código de jogo inválido. Verifique e tente novamente.")
 
 def render_waiting_room():
-    # Nenhum spinner aqui, pois é uma leitura e loop de espera
-    current_game = Game.get_by_code(st.session_state.game_code) 
+    current_game_code = st.session_state.get("game_code")
+    if not current_game_code:
+        st.error("Código do jogo não encontrado na sessão.")
+        navigate_to("home")
+        st.rerun()
+        return
+        
+    current_game = Game.get_by_code(current_game_code) 
     if not current_game:
         st.error("Jogo não encontrado!")
         navigate_to("home")
@@ -96,16 +102,24 @@ def render_waiting_room():
             st.info("Nenhum jogador entrou ainda.")
         else:
             player_cols = st.columns(3)
-            for i, (player_name, player_data) in enumerate(current_game.players.items()):
+            # Iterar sobre uma cópia para evitar problemas se o dict mudar durante a iteração
+            for i, (player_name, player_data) in enumerate(list(current_game.players.items())):
                 with player_cols[i % 3]:
                     st.markdown(f"<div style='text-align:center; padding:10px; margin:5px; background-color:#e0f7fa; border-radius:10px;'>"
-                                f"<span style='font-size:2rem;'>{player_data['icon']}</span><br>{player_name}</div>",
+                                f"<span style='font-size:2rem;'>{player_data.get('icon', '❓')}</span><br>{player_name}</div>",
                                 unsafe_allow_html=True)
     time.sleep(2)
     st.rerun()
 
 def render_game():
-    current_game = Game.get_by_code(st.session_state.game_code) 
+    current_game_code = st.session_state.get("game_code")
+    if not current_game_code:
+        st.error("Código do jogo não encontrado na sessão.")
+        navigate_to("home")
+        st.rerun()
+        return
+
+    current_game = Game.get_by_code(current_game_code) 
     if not current_game:
         st.error("Jogo não encontrado!")
         navigate_to("home")
@@ -122,9 +136,16 @@ def render_game():
         return
 
     player_name_session = st.session_state.username
-    player_data = current_game.players.get(player_name_session, {}) 
-    player_answers = player_data.get("answers", [])
-    already_answered = any(answer["question"] == current_game.current_question for answer in player_answers)
+    # player_data pode ser None se o jogador não estiver mais no jogo por algum motivo
+    player_data = current_game.players.get(player_name_session, {}) if isinstance(current_game.players, dict) else {}
+    player_answers = player_data.get("answers", []) if isinstance(player_data, dict) else []
+    
+    # Certifica-se que player_answers é uma lista
+    if not isinstance(player_answers, list):
+        player_answers = []
+
+    already_answered = any(isinstance(answer, dict) and answer.get("question") == current_game.current_question for answer in player_answers)
+
 
     if st.session_state.get("show_ranking", False): 
         st.markdown("<h1 class='title'>🏆 Ranking Parcial</h1>", unsafe_allow_html=True)
@@ -133,16 +154,16 @@ def render_game():
         with col2:
             table_html = "<div class='custom-ranking-table-container'><table class='custom-ranking-table'>"
             table_html += "<thead><tr><th>Pos.</th><th>Jogador</th><th>Pontos</th></tr></thead><tbody>"
-            for i, player in enumerate(ranking[:10]): 
-                table_html += f"<tr><td>{i+1}</td><td>{player['icon']} {player['name']}</td><td>{player['score']}</td></tr>"
+            for i, player_rank_info in enumerate(ranking[:10]): 
+                table_html += f"<tr><td>{i+1}</td><td>{player_rank_info.get('icon','❓')} {player_rank_info['name']}</td><td>{player_rank_info['score']}</td></tr>"
             table_html += "</tbody></table></div>"
             st.markdown(table_html, unsafe_allow_html=True)
-            player_position = next((i+1 for i, p in enumerate(ranking) if p["name"] == player_name_session), None)
+            player_position = next((i+1 for i, p_rank in enumerate(ranking) if p_rank["name"] == player_name_session), None)
             if player_position:
                 st.markdown(f"<p style='text-align:center; margin-top:20px;'>Sua posição: {player_position}º lugar</p>", unsafe_allow_html=True)
             st.markdown("<div class='countdown'>Próxima pergunta em:</div>", unsafe_allow_html=True)
             countdown_placeholder = st.empty() 
-            for i_countdown in range(5, 0, -1): # Renomeado i para i_countdown
+            for i_countdown in range(5, 0, -1): 
                 countdown_placeholder.markdown(f"<div class='countdown'>{i_countdown}</div>", unsafe_allow_html=True)
                 time.sleep(1)
             st.session_state.show_ranking = False
@@ -150,6 +171,13 @@ def render_game():
         return 
 
     current_q_idx_game = current_game.current_question 
+    
+    if not (0 <= current_q_idx_game < len(current_game.questions)):
+        st.error("Índice da pergunta inválido. Aguardando o professor avançar ou finalizar o jogo.")
+        time.sleep(3)
+        st.rerun()
+        return
+
     st.markdown("<h1 class='title'>🎮 AryRoot</h1>", unsafe_allow_html=True)
     st.markdown(f"<div class='question-number'>Pergunta {current_q_idx_game + 1} de {len(current_game.questions)}</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='question-text'>{current_game.questions[current_q_idx_game]['question']}</div>", unsafe_allow_html=True)
@@ -162,15 +190,16 @@ def render_game():
         option_text_colors = ["white", "white", "black", "white"]
         option_cols = st.columns(2)
 
-        for i_opt, option in enumerate(current_game.questions[current_q_idx_game]['options']): # Renomeado i para i_opt
+        for i_opt, option in enumerate(current_game.questions[current_q_idx_game]['options']): 
             with option_cols[i_opt % 2]:
                 if st.button(option, key=f"option_{i_opt}", 
                            help="Clique para selecionar esta resposta",
                            use_container_width=True,
                            type="primary"): 
-                    with st.spinner("Registrando sua resposta..."): # Adicionado spinner
+                    with st.spinner("Registrando sua resposta..."): 
                         time_taken = time.time() - st.session_state.answer_time
                         st.session_state.answer_time = None 
+                        # record_answer agora salva no SQLite através do game.save()
                         is_correct, points = current_game.record_answer(player_name_session, i_opt, time_taken) 
                     
                     if is_correct:
@@ -182,9 +211,8 @@ def render_game():
 
         num_options = len(current_game.questions[current_q_idx_game]['options'])
         css_options = ""
-        for i_css in range(num_options): # Renomeado i para i_css
+        for i_css in range(num_options): 
             css_options += f"button[data-testid='stButton'][key='option_{i_css}'] > div > p {{ color: {option_text_colors[i_css]} !important; }}\n"
-            # ... (restante do CSS dinâmico - sem mudança lógica)
             css_options += f"button[data-testid='stButton'][key='option_{i_css}'] {{ background-color: {option_colors[i_css]} !important; border: none !important; }}\n"
             css_options += f"button[data-testid='stButton'][key='option_{i_css}']:hover {{ background-color: {option_colors[i_css]} !important; opacity: 0.9 !important; border: none !important; }}\n"
             css_options += f"button[data-testid='stButton'][key='option_{i_css}']:focus {{ background-color: {option_colors[i_css]} !important; opacity: 0.9 !important; border: none !important; box-shadow: none !important; }}\n"
@@ -194,9 +222,15 @@ def render_game():
         time.sleep(2) 
         st.rerun()
 
-# render_game_results (sem mudanças necessárias para o lock, pois é principalmente leitura)
 def render_game_results():
-    current_game_results = Game.get_by_code(st.session_state.game_code) 
+    current_game_code = st.session_state.get("game_code")
+    if not current_game_code:
+        st.error("Código do jogo não encontrado na sessão.")
+        navigate_to("home")
+        st.rerun()
+        return
+
+    current_game_results = Game.get_by_code(current_game_code) 
     if not current_game_results:
         st.error("Jogo não encontrado!")
         navigate_to("home")
@@ -205,9 +239,9 @@ def render_game_results():
 
     st.markdown("<h1 class='title' style='text-align: center; margin-bottom: 20px;'>🏆 Resultados Finais</h1>", unsafe_allow_html=True)
     ranking = current_game_results.get_ranking() 
-    player_position = next((i+1 for i, p in enumerate(ranking) if p["name"] == st.session_state.username), None)
+    player_name_for_results = st.session_state.get("username") # Pode não ser o 'username' do professor
+    player_position = next((i+1 for i, p_res in enumerate(ranking) if p_res["name"] == player_name_for_results), None)
 
-    # CSS (sem mudanças)
     st.markdown("""
     <style> 
     audio { display: none; }
@@ -235,9 +269,9 @@ def render_game_results():
     </style>
     """, unsafe_allow_html=True)
 
-    if st.session_state.user_type == "student" and player_position:
+    if st.session_state.user_type == "student" and player_position and player_name_for_results:
         st.markdown(f"<p style='text-align:center; font-size:1.5rem; color:#2E7D32; margin-bottom: 10px;'>"
-                    f"Parabéns, {st.session_state.username}! Você ficou em {player_position}º lugar!</p>",
+                    f"Parabéns, {player_name_for_results}! Você ficou em {player_position}º lugar!</p>",
                     unsafe_allow_html=True)
         if "balloons_shown" not in st.session_state: st.session_state.balloons_shown = False
         if not st.session_state.balloons_shown:
@@ -249,28 +283,28 @@ def render_game_results():
         else:
             st.warning("Arquivo de áudio 'aplausos.mp3' não encontrado.")
 
-    # Pódio e Tabela de Ranking (sem mudanças lógicas)
     if len(ranking) > 0:
         podium_html = "<div class='podium-container'>"
-        ordered_ranking_podium = [] 
-        if len(ranking) >= 2: ordered_ranking_podium.append({'player': ranking[1], 'class': 'second-place'})
-        else: ordered_ranking_podium.append(None) 
-        ordered_ranking_podium.append({'player': ranking[0], 'class': 'first-place'})
-        if len(ranking) >= 3: ordered_ranking_podium.append({'player': ranking[2], 'class': 'third-place'})
-        else: ordered_ranking_podium.append(None) 
+        ordered_ranking_podium = [None, None, None] # [second, first, third]
 
-        if ordered_ranking_podium[0]:
+        if len(ranking) >= 1: ordered_ranking_podium[1] = {'player': ranking[0], 'class': 'first-place'}
+        if len(ranking) >= 2: ordered_ranking_podium[0] = {'player': ranking[1], 'class': 'second-place'}
+        if len(ranking) >= 3: ordered_ranking_podium[2] = {'player': ranking[2], 'class': 'third-place'}
+        
+        # Construir HTML para o pódio apenas com os que existem
+        if ordered_ranking_podium[0]: # Segundo lugar
             podium_html += (f"<div class='podium-place {ordered_ranking_podium[0]['class']}'>"
-                            f"<span class='podium-icon'>{ordered_ranking_podium[0]['player']['icon']}</span>"
+                            f"<span class='podium-icon'>{ordered_ranking_podium[0]['player'].get('icon','❓')}</span>"
                             f"<div class='podium-name'>{ordered_ranking_podium[0]['player']['name']}</div>"
                             f"<div class='podium-score'>{ordered_ranking_podium[0]['player']['score']} pts</div></div>")
-        podium_html += (f"<div class='podium-place {ordered_ranking_podium[1]['class']}'>"
-                        f"<span class='podium-icon'>{ordered_ranking_podium[1]['player']['icon']}</span>"
-                        f"<div class='podium-name'>{ordered_ranking_podium[1]['player']['name']}</div>"
-                        f"<div class='podium-score'>{ordered_ranking_podium[1]['player']['score']} pts</div></div>")
-        if ordered_ranking_podium[2]:
+        if ordered_ranking_podium[1]: # Primeiro lugar
+            podium_html += (f"<div class='podium-place {ordered_ranking_podium[1]['class']}'>"
+                            f"<span class='podium-icon'>{ordered_ranking_podium[1]['player'].get('icon','❓')}</span>"
+                            f"<div class='podium-name'>{ordered_ranking_podium[1]['player']['name']}</div>"
+                            f"<div class='podium-score'>{ordered_ranking_podium[1]['player']['score']} pts</div></div>")
+        if ordered_ranking_podium[2]: # Terceiro lugar
             podium_html += (f"<div class='podium-place {ordered_ranking_podium[2]['class']}'>"
-                            f"<span class='podium-icon'>{ordered_ranking_podium[2]['player']['icon']}</span>"
+                            f"<span class='podium-icon'>{ordered_ranking_podium[2]['player'].get('icon','❓')}</span>"
                             f"<div class='podium-name'>{ordered_ranking_podium[2]['player']['name']}</div>"
                             f"<div class='podium-score'>{ordered_ranking_podium[2]['player']['score']} pts</div></div>")
         podium_html += "</div>"
@@ -279,22 +313,22 @@ def render_game_results():
         st.info("Nenhum jogador participou ou pontuou para exibir o pódio.")
 
     st.markdown("<p style='text-align: center; font-size: 24px; margin-top: 30px; margin-bottom: 10px;'><strong>📉 Ranking Completo</strong></p>", unsafe_allow_html=True)
-    table_html_ranking = "<div class='custom-ranking-table-container'><table class='custom-ranking-table'>" # Renomeado table_html
+    table_html_ranking = "<div class='custom-ranking-table-container'><table class='custom-ranking-table'>"
     table_html_ranking += "<thead><tr><th>Pos.</th><th>Jogador</th><th>Pontos</th></tr></thead><tbody>"
     if not ranking:
         table_html_ranking += "<tr><td colspan='3'>Nenhum jogador participou ou pontuou.</td></tr>"
     else:
-        for i_rank_table, player in enumerate(ranking): # Renomeado i
+        for i_rank_table, player_info_rank in enumerate(ranking): 
             medal = ""
             if i_rank_table == 0: medal = "<span class='medal-icon'>🥇</span>"
             elif i_rank_table == 1: medal = "<span class='medal-icon'>🥈</span>"
             elif i_rank_table == 2: medal = "<span class='medal-icon'>🥉</span>"
-            is_current_player_student = player["name"] == st.session_state.username and st.session_state.user_type == "student"
+            is_current_player_student = player_info_rank["name"] == player_name_for_results and st.session_state.user_type == "student"
             row_class = "current-player-row" if is_current_player_student else ""
             table_html_ranking += f"<tr class='{row_class}'>"
             table_html_ranking += f"<td>{i_rank_table+1} {medal}</td>"
-            table_html_ranking += f"<td>{player['icon']} {player['name']}</td>" 
-            table_html_ranking += f"<td>{player['score']}</td></tr>"
+            table_html_ranking += f"<td>{player_info_rank.get('icon','❓')} {player_info_rank['name']}</td>" 
+            table_html_ranking += f"<td>{player_info_rank['score']}</td></tr>"
     table_html_ranking += "</tbody></table></div>"
     st.markdown(table_html_ranking, unsafe_allow_html=True)
 
@@ -303,15 +337,21 @@ def render_game_results():
         student_button_cols = st.columns(button_col_config)
         with student_button_cols[1]:
             if st.button("Voltar ao Início", key="back_to_home_results", use_container_width=True):
-                if "balloons_shown" in st.session_state: del st.session_state.balloons_shown
-                if "selected_icon" in st.session_state: del st.session_state.selected_icon 
-                if "answer_time" in st.session_state: del st.session_state.answer_time
+                # Limpar estados de sessão relacionados ao jogo/aluno
+                keys_to_clear_student_results = ["balloons_shown", "selected_icon", "answer_time", 
+                                                 "game_code", "username", "user_type", "show_ranking", 
+                                                 "selected_answer", "join_game_code", "join_nickname"]
+                for k_clear_stud in keys_to_clear_student_results:
+                    if k_clear_stud in st.session_state: del st.session_state[k_clear_stud]
                 navigate_to("home")
                 st.rerun()
     elif st.session_state.user_type == "teacher":
         teacher_button_cols = st.columns(button_col_config)
         with teacher_button_cols[1]:
             if st.button("Voltar ao Painel do Professor", key="back_to_teacher_dashboard_results", use_container_width=True):
-                if "balloons_shown" in st.session_state: del st.session_state.balloons_shown
+                # Limpar estados de sessão relacionados ao jogo específico, mas manter login do professor
+                keys_to_clear_teacher_results = ["balloons_shown", "game_code", "show_ranking"]
+                for k_clear_teach in keys_to_clear_teacher_results:
+                    if k_clear_teach in st.session_state: del st.session_state[k_clear_teach]
                 navigate_to("teacher_dashboard")
                 st.rerun()

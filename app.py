@@ -1,7 +1,7 @@
 # app.py
 import streamlit as st
-from core import setup_data_directory
-from professor import render_teacher_login, render_teacher_dashboard, render_teacher_game_control, render_teacher_signup, render_upload_questions_json_page # Adicionada importação
+from core import setup_data_directory # Core agora lida com SQLite
+from professor import render_teacher_login, render_teacher_dashboard, render_teacher_game_control, render_teacher_signup, render_upload_questions_json_page 
 from aluno import render_student_home, render_waiting_room, render_game, render_game_results
 from dotenv import load_dotenv
 
@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS personalizados
+# Estilos CSS personalizados (sem alterações)
 st.markdown("""
 <style>
     .main {
@@ -251,7 +251,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Inicializar arquivos de dados
+# Inicializar o banco de dados SQLite e tabelas (se não existirem)
 setup_data_directory()
 
 # Função para inicializar sessão
@@ -260,22 +260,28 @@ def init_session_state():
         st.session_state.page = "home"
     if "user_type" not in st.session_state:
         st.session_state.user_type = None
-    if "username" not in st.session_state:
+    if "username" not in st.session_state: # Para professor ou aluno
         st.session_state.username = None
     if "game_code" not in st.session_state:
         st.session_state.game_code = None
-    if "selected_icon" not in st.session_state:
+    if "selected_icon" not in st.session_state: # Específico do aluno
         st.session_state.selected_icon = None
-    if "answer_time" not in st.session_state:
+    if "answer_time" not in st.session_state: # Específico do aluno
         st.session_state.answer_time = None
-    if "show_ranking" not in st.session_state:
+    if "show_ranking" not in st.session_state: # Usado por aluno e professor_game_control
         st.session_state.show_ranking = False
+    # selected_answer parece não ser mais usado globalmente, mas pode ser específico de alguma lógica de aluno
     if "selected_answer" not in st.session_state:
         st.session_state.selected_answer = None
+    # temp_questions é específico do professor para gerenciar suas questões antes de criar um jogo
+    if "temp_questions" not in st.session_state:
+        st.session_state.temp_questions = []
 
-# Navegar para uma página
-def navigate_to(page):
-    st.session_state.page = page
+
+# Navegar para uma página (já existe em aluno.py e professor.py, mas pode ser centralizado se desejado)
+# Por enquanto, manteremos as versões locais para evitar import circular ou refatoração maior.
+# def navigate_to(page):
+# st.session_state.page = page
 
 # Página Inicial
 def render_home():
@@ -292,22 +298,29 @@ def render_home():
 # Função principal
 def main():
     init_session_state()
-    if st.session_state.page == "home":
+    
+    page = st.session_state.get("page", "home")
+
+    if page == "home":
         render_home()
-    elif st.session_state.page == "waiting_room":
+    elif page == "waiting_room":
         render_waiting_room()
-    elif st.session_state.page == "teacher_dashboard":
+    elif page == "teacher_dashboard":
         render_teacher_dashboard()
-    elif st.session_state.page == "teacher_game_control":
+    elif page == "teacher_game_control":
         render_teacher_game_control()
-    elif st.session_state.page == "game":
+    elif page == "game":
         render_game()
-    elif st.session_state.page == "game_results":
+    elif page == "game_results":
         render_game_results()
-    elif st.session_state.page == "teacher_signup":
+    elif page == "teacher_signup":
         render_teacher_signup()
-    elif st.session_state.page == "teacher_upload_json": # Nova rota
+    elif page == "teacher_upload_json": 
         render_upload_questions_json_page()
+    else: # Fallback para home se a página for desconhecida
+        st.session_state.page = "home"
+        render_home()
+
 
 if __name__ == "__main__":
     main()

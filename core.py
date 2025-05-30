@@ -6,178 +6,221 @@ import os
 from datetime import datetime
 import bcrypt
 from dotenv import load_dotenv
-import streamlit as st 
-import threading # Adicionado para Locks
+import sqlite3
+import streamlit as st
 
 # Carregar variáveis de ambiente
 load_dotenv()
 
-# Cache em memória global (da implementação anterior)
-_GAMES_CACHE = {}
-_TEACHERS_CACHE = {}
+DATABASE_PATH = "data/database.db"
 
-# Locks para proteger escrita nos arquivos JSON
-_JSON_WRITE_LOCK_GAMES = threading.Lock()
-_JSON_WRITE_LOCK_TEACHERS = threading.Lock()
+# Função para obter conexão com o banco de dados
+def get_db_connection():
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row # Permite acessar colunas por nome
+    return conn
 
-
-# Função para criar o diretório de dados se não existir
+# Função para criar o diretório de dados e inicializar o banco de dados
 def setup_data_directory():
     os.makedirs("data", exist_ok=True)
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    teachers_file_path = "data/teachers.json"
-    games_file_path = "data/games.json"
+    # Criar tabela de professores
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS teachers (
+        username TEXT PRIMARY KEY,
+        password TEXT NOT NULL,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        questions TEXT DEFAULT '[]'
+    )
+    ''')
 
-    # Protegendo a inicialização dos arquivos com locks também, por segurança
-    with _JSON_WRITE_LOCK_TEACHERS:
-        if not os.path.exists(teachers_file_path):
-            demo_username = "professor"
-            demo_plain_password = os.getenv("DEMO_PROFESSOR_PASSWORD")
-            demo_name = os.getenv("DEMO_PROFESSOR_NAME", "Professor Demo")
-            demo_email = os.getenv("DEMO_PROFESSOR_EMAIL", "professor@demo.com")
+    # Criar tabela de jogos
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS games (
+        code TEXT PRIMARY KEY,
+        teacher_username TEXT NOT NULL,
+        questions TEXT DEFAULT '[]',
+        players TEXT DEFAULT '{}',
+        status TEXT DEFAULT 'waiting',
+        current_question INTEGER DEFAULT 0,
+        start_time TEXT,
+        question_start_time TEXT,
+        FOREIGN KEY (teacher_username) REFERENCES teachers (username)
+    )
+    ''')
 
-            if not demo_plain_password:
-                print("------------------------------------------------------------------------------------")
-                print("AVISO IMPORTANTE: 'DEMO_PROFESSOR_PASSWORD' não definida no .env.")
-                print("(O arquivo 'data/teachers.json' será inicializado como um dicionário vazio.)")
-                print("------------------------------------------------------------------------------------")
-                with open(teachers_file_path, "w") as f:
-                    json.dump({}, f)
-            else:
-                hashed_password = bcrypt.hashpw(demo_plain_password.encode('utf-8'), bcrypt.gensalt())
-                teacher_data_demo = { # Renomeado para evitar conflito
-                    "username": demo_username,
-                    "password": hashed_password.decode('utf-8'),
-                    "name": demo_name,
-                    "email": demo_email,
-                    "questions": [] 
-                }
-                with open(teachers_file_path, "w") as f:
-                    json.dump({demo_username: teacher_data_demo}, f, indent=4)
-                print(f"Arquivo '{teachers_file_path}' criado e usuário demo '{demo_username}' configurado.")
-                if _TEACHERS_CACHE is not None:
-                     _TEACHERS_CACHE[demo_username] = Teacher.from_dict(teacher_data_demo)
+    # Verificar se o professor demo precisa ser inserido
+    cursor.execute("SELECT COUNT(*) FROM teachers WHERE username = ?", ("professor",))
+    if cursor.fetchone()[0] == 0:
+        demo_username = "professor"
+        demo_plain_password = os.getenv("DEMO_PROFESSOR_PASSWORD")
+        demo_name = os.getenv("DEMO_PROFESSOR_NAME", "Professor Demo")
+        demo_email = os.getenv("DEMO_PROFESSOR_EMAIL", "professor@demo.com")
 
-    with _JSON_WRITE_LOCK_GAMES:
-        if not os.path.exists(games_file_path):
-            with open(games_file_path, "w") as f:
-                json.dump({}, f)
-            print(f"Arquivo '{games_file_path}' criado.")
+        if not demo_plain_password:
+            print("------------------------------------------------------------------------------------")
+            print("AVISO IMPORTANTE: 'DEMO_PROFESSOR_PASSWORD' não definida no .env.")
+            print("O usuário demo 'professor' não será criado automaticamente com senha.")
+            print("------------------------------------------------------------------------------------")
+        else:
+            hashed_password = bcrypt.hashpw(demo_plain_password.encode('utf-8'), bcrypt.gensalt())
+            teacher_data_demo = {
+                "username": demo_username,
+                "password": hashed_password.decode('utf-8'),
+                "name": demo_name,
+                "email": demo_email,
+                "questions": json.dumps(SAMPLE_QUESTIONS) # Professor demo começa com as questões de exemplo
+            }
+            try:
+                cursor.execute('''
+                INSERT INTO teachers (username, password, name, email, questions)
+                VALUES (:username, :password, :name, :email, :questions)
+                ''', teacher_data_demo)
+                conn.commit()
+                print(f"Usuário demo '{demo_username}' configurado no banco de dados SQLite.")
+            except sqlite3.Error as e:
+                print(f"Erro ao inserir professor demo no SQLite: {e}")
+    
+    conn.close()
 
 # Gerar código aleatório para jogos
 def generate_game_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
-# Funções de utilidade para o cache (da implementação anterior)
-def clear_game_from_cache(game_code):
-    if game_code in _GAMES_CACHE:
-        del _GAMES_CACHE[game_code]
-
-def clear_teacher_from_cache(username):
-    if username in _TEACHERS_CACHE:
-        del _TEACHERS_CACHE[username]
-
-def clear_all_teachers_from_cache():
-    _TEACHERS_CACHE.clear()
-
-def clear_all_games_from_cache(): 
-    _GAMES_CACHE.clear()
-
-# Classes para gerenciar os dados
 class Teacher:
-    def __init__(self, username, password, name, email):
+    def __init__(self, username, password, name, email, questions_json_str="[]"):
         self.username = username
-        self.password = password
+        self.password = password # Deve ser o hash
         self.name = name
         self.email = email
-        self.questions = []
+        try:
+            self.questions = json.loads(questions_json_str) if questions_json_str else []
+        except json.JSONDecodeError:
+            self.questions = []
 
-    def to_dict(self):
+
+    def to_dict_for_db(self):
         return {
             "username": self.username,
             "password": self.password,
             "name": self.name,
             "email": self.email,
-            "questions": self.questions
+            "questions": json.dumps(self.questions)
         }
 
     @classmethod
-    def from_dict(cls, data):
-        teacher = cls(data["username"], data["password"], data["name"], data["email"])
-        teacher.questions = data.get("questions", [])
-        return teacher
+    def from_db_row(cls, row):
+        if not row:
+            return None
+        return cls(row["username"], row["password"], row["name"], row["email"], row["questions"])
 
     def add_question(self, question):
+        if not isinstance(self.questions, list): # Garantir que é uma lista
+             self.questions = []
         self.questions.append(question)
         self.save()
 
     def save(self):
-        # Adquire o lock antes de qualquer operação de I/O no arquivo de professores
-        with _JSON_WRITE_LOCK_TEACHERS:
-            try:
-                with open("data/teachers.json", "r") as f:
-                    teachers_data_on_disk = json.load(f)
-            except (FileNotFoundError, json.JSONDecodeError):
-                teachers_data_on_disk = {}
-            
-            teachers_data_on_disk[self.username] = self.to_dict()
-            
-            try:
-                with open("data/teachers.json", "w") as f:
-                    json.dump(teachers_data_on_disk, f, indent=4)
-                # Atualizar cache APÓS salvar no disco e dentro do lock
-                _TEACHERS_CACHE[self.username] = self
-            except Exception as e:
-                print(f"Erro ao salvar professor {self.username} no JSON: {e}")
-                # Considerar se deve remover do cache em caso de falha no save
-                # clear_teacher_from_cache(self.username) # Cuidado aqui, pois pode causar inconsistência
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            data = self.to_dict_for_db()
+            cursor.execute('''
+            INSERT OR REPLACE INTO teachers (username, password, name, email, questions)
+            VALUES (:username, :password, :name, :email, :questions)
+            ''', data)
+            conn.commit()
+        except sqlite3.Error as e:
+            print(f"Erro ao salvar professor {self.username} no SQLite: {e}")
+            st.error(f"Erro de banco de dados ao salvar professor: {e}") # Para feedback ao usuário
+        finally:
+            conn.close()
 
     @classmethod
     def get_by_username(cls, username):
-        if username in _TEACHERS_CACHE:
-            return _TEACHERS_CACHE[username]
-        
-        # A leitura não precisa estritamente do lock se as escritas são protegidas,
-        # mas para consistência máxima em cenários de criação inicial de arquivo,
-        # ou se o arquivo pudesse ser modificado externamente (não é o caso aqui),
-        # um lock de leitura (ou o mesmo lock de escrita) poderia ser usado.
-        # Por simplicidade, vamos omitir o lock na leitura aqui, pois as escritas são serializadas.
+        conn = get_db_connection()
+        cursor = conn.cursor()
         try:
-            with open("data/teachers.json", "r") as f:
-                teachers_data_on_disk = json.load(f)
-            if username in teachers_data_on_disk:
-                teacher_obj = cls.from_dict(teachers_data_on_disk[username])
-                _TEACHERS_CACHE[username] = teacher_obj 
-                return teacher_obj
-        except FileNotFoundError:
+            cursor.execute("SELECT * FROM teachers WHERE username = ?", (username,))
+            row = cursor.fetchone()
+            return cls.from_db_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar professor {username} no SQLite: {e}")
+            st.error(f"Erro de banco de dados ao buscar professor: {e}")
             return None
-        except json.JSONDecodeError:
-            print("Erro ao decodificar data/teachers.json ao buscar professor.")
-            return None
-        return None
+        finally:
+            conn.close()
 
     @classmethod
     def create(cls, username, password, name, email):
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        # questions_json_str é omitido, o construtor usará o default '[]'
         return cls(username, hashed_password, name, email)
 
+    @classmethod
+    def get_all_teachers_except_admin(cls):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        teachers_list = []
+        try:
+            cursor.execute("SELECT * FROM teachers WHERE username != 'professor'")
+            rows = cursor.fetchall()
+            for row in rows:
+                teachers_list.append(cls.from_db_row(row))
+            return teachers_list
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar todos os professores (exceto admin) no SQLite: {e}")
+            st.error(f"Erro de banco de dados ao listar professores: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    @classmethod
+    def delete_by_username(cls, username):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM teachers WHERE username = ?", (username,))
+            conn.commit()
+            return cursor.rowcount > 0 # Retorna True se alguma linha foi deletada
+        except sqlite3.Error as e:
+            print(f"Erro ao deletar professor {username} do SQLite: {e}")
+            st.error(f"Erro de banco de dados ao deletar professor: {e}")
+            return False
+        finally:
+            conn.close()
+
+
 class Game:
-    def __init__(self, code, teacher_username, questions=None, players=None, status="waiting"):
+    def __init__(self, code, teacher_username, questions_json_str="[]", players_json_str="{}", status="waiting", current_question=0, start_time=None, question_start_time=None):
         self.code = code
         self.teacher_username = teacher_username
-        self.questions = questions or []
-        self.players = players or {} 
+        
+        try:
+            self.questions = json.loads(questions_json_str) if questions_json_str else []
+        except json.JSONDecodeError:
+            self.questions = []
+            
+        try:
+            self.players = json.loads(players_json_str) if players_json_str else {}
+        except json.JSONDecodeError:
+            self.players = {}
+            
         self.status = status 
-        self.current_question = 0
-        self.start_time = None
-        self.question_start_time = None
+        self.current_question = current_question
+        self.start_time = start_time
+        self.question_start_time = question_start_time
 
-    def to_dict(self):
+    def to_dict_for_db(self):
         return {
             "code": self.code,
             "teacher_username": self.teacher_username,
-            "questions": self.questions,
-            "players": self.players,
+            "questions": json.dumps(self.questions),
+            "players": json.dumps(self.players),
             "status": self.status,
             "current_question": self.current_question,
             "start_time": self.start_time,
@@ -185,21 +228,21 @@ class Game:
         }
 
     @classmethod
-    def from_dict(cls, data):
-        game = cls(
-            data["code"],
-            data["teacher_username"],
-            data.get("questions", []),
-            data.get("players", {}),
-            data.get("status", "waiting")
+    def from_db_row(cls, row):
+        if not row:
+            return None
+        return cls(
+            row["code"],
+            row["teacher_username"],
+            row["questions"], # Passando como string JSON
+            row["players"],   # Passando como string JSON
+            row["status"],
+            row["current_question"],
+            row["start_time"],
+            row["question_start_time"]
         )
-        game.current_question = data.get("current_question", 0)
-        game.start_time = data.get("start_time")
-        game.question_start_time = data.get("question_start_time")
-        return game
 
     def add_player(self, nickname, icon):
-        # A lógica de checagem do nickname não precisa do lock
         if nickname not in self.players:
             self.players[nickname] = {
                 "icon": icon,
@@ -246,6 +289,10 @@ class Game:
             points = int(max_points - points_reduction)
             points = max(min_points_correct, points) 
         
+        # Garante que 'answers' existe e é uma lista
+        if "answers" not in self.players[player_name] or not isinstance(self.players[player_name]["answers"], list):
+            self.players[player_name]["answers"] = []
+
         self.players[player_name]["answers"].append({
             "question": self.current_question,
             "answer": answer_index,
@@ -258,72 +305,61 @@ class Game:
         return is_correct, points
 
     def get_ranking(self):
-        ranking = [{"name": name, "icon": data["icon"], "score": data["score"]} for name, data in self.players.items()]
+        # Garante que self.players é um dicionário
+        if not isinstance(self.players, dict):
+            return []
+            
+        ranking = [{"name": name, "icon": data.get("icon", "❓"), "score": data.get("score", 0)} for name, data in self.players.items() if isinstance(data, dict)]
         return sorted(ranking, key=lambda x: x["score"], reverse=True)
 
     def save(self):
-        # Adquire o lock antes de qualquer operação de I/O no arquivo de jogos
-        with _JSON_WRITE_LOCK_GAMES:
-            try:
-                with open("data/games.json", "r") as f:
-                    games_data_on_disk = json.load(f)
-            except (FileNotFoundError, json.JSONDecodeError):
-                games_data_on_disk = {}
-            
-            games_data_on_disk[self.code] = self.to_dict()
-            
-            try:
-                with open("data/games.json", "w") as f:
-                    json.dump(games_data_on_disk, f, indent=4)
-                # Atualizar cache APÓS salvar no disco e dentro do lock
-                _GAMES_CACHE[self.code] = self
-            except Exception as e:
-                print(f"Erro ao salvar jogo {self.code} no JSON: {e}")
-                # clear_game_from_cache(self.code) # Cuidado com a consistência
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            data = self.to_dict_for_db()
+            cursor.execute('''
+            INSERT OR REPLACE INTO games (code, teacher_username, questions, players, status, current_question, start_time, question_start_time)
+            VALUES (:code, :teacher_username, :questions, :players, :status, :current_question, :start_time, :question_start_time)
+            ''', data)
+            conn.commit()
+        except sqlite3.Error as e:
+            print(f"Erro ao salvar jogo {self.code} no SQLite: {e}")
+            st.error(f"Erro de banco de dados ao salvar jogo: {e}")
+        finally:
+            conn.close()
 
     @classmethod
     def get_by_code(cls, code):
-        if code in _GAMES_CACHE:
-            return _GAMES_CACHE[code]
-        
-        # Omissão do lock na leitura por simplicidade, assumindo escritas serializadas.
+        conn = get_db_connection()
+        cursor = conn.cursor()
         try:
-            with open("data/games.json", "r") as f:
-                games_data_on_disk = json.load(f)
-            if code in games_data_on_disk:
-                game_obj = cls.from_dict(games_data_on_disk[code])
-                _GAMES_CACHE[code] = game_obj 
-                return game_obj
-        except FileNotFoundError:
+            cursor.execute("SELECT * FROM games WHERE code = ?", (code,))
+            row = cursor.fetchone()
+            return cls.from_db_row(row)
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar jogo {code} no SQLite: {e}")
+            st.error(f"Erro de banco de dados ao buscar jogo por código: {e}")
             return None
-        except json.JSONDecodeError:
-            print("Erro ao decodificar data/games.json ao buscar jogo por código.")
-            return None
-        return None
+        finally:
+            conn.close()
     
     @classmethod
     def get_by_teacher(cls, teacher_username):
-        # Leitura do disco. Para consistência, se o jogo estiver no cache, usamos essa instância.
-        # Esta função é menos crítica para performance que get_by_code.
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        games_list = []
         try:
-            with open("data/games.json", "r") as f: # Leitura não precisa de lock se escritas são seguras
-                games_data = json.load(f)
-            
-            teacher_games_from_disk = []
-            for data in games_data.values():
-                if data.get("teacher_username") == teacher_username:
-                    if data["code"] in _GAMES_CACHE:
-                        teacher_games_from_disk.append(_GAMES_CACHE[data["code"]])
-                    else:
-                        game_obj = cls.from_dict(data)
-                        _GAMES_CACHE[data["code"]] = game_obj 
-                        teacher_games_from_disk.append(game_obj)
-            return teacher_games_from_disk
-        except FileNotFoundError:
+            cursor.execute("SELECT * FROM games WHERE teacher_username = ?", (teacher_username,))
+            rows = cursor.fetchall()
+            for row in rows:
+                games_list.append(cls.from_db_row(row))
+            return games_list
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar jogos do professor {teacher_username} no SQLite: {e}")
+            st.error(f"Erro de banco de dados ao buscar jogos por professor: {e}")
             return []
-        except json.JSONDecodeError:
-            print("Erro ao decodificar data/games.json ao buscar jogos por professor.")
-            return []
+        finally:
+            conn.close()
 
 # SAMPLE_QUESTIONS e PLAYER_ICONS permanecem os mesmos.
 SAMPLE_QUESTIONS = [
