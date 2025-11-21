@@ -530,22 +530,102 @@ class Game:
 # SAMPLE_QUESTIONS e PLAYER_ICONS permanecem os mesmos
 SAMPLE_QUESTIONS = [
   {
-    "question": "A camada de banco de dados de um aplicativo Web está sendo executada em um servidor Windows local. O banco de dados é um banco de dados Microsoft SQL Server. O proprietário do aplicativo gostaria de migrar o banco de dados para uma instância do Amazon RDS. Como a migração pode ser executada com o mínimo de esforço administrativo e tempo de inatividade?",
+    "question": "Uma empresa utiliza duas contas AWS: produção e desenvolvimento. A empresa armazena os dados em um bucket Amazon S3 que está na conta de produção. Os dados são criptografados com uma chave gerenciada pelo cliente do AWS Key Management Service (AWS KMS). A empresa planeja copiar os dados para outro bucket S3 que esteja na conta de desenvolvimento. Um desenvolvedor precisa usar uma chave KMS para criptografar os dados no bucket S3 que está na conta de desenvolvimento. A chave KMS na conta de desenvolvimento deve estar acessível a partir da conta de produção. Qual solução atenderá a esses requisitos?",
     "options": [
-      "Usar o AWS Server Migration Service (SMS) para migrar o servidor para o Amazon EC2. Usar o AWS Database Migration Service (DMS) para migrar o banco de dados para o RDS",
-      "Usar o AWS Database Migration Service (DMS) para migrar diretamente o banco de dados para o RDS.",
-      "Usar a Schema Conversion Tool (SCT) para habilitar a conversão do Microsoft SQL Server para o Amazon RDS",
-      "Usar o AWS DataSync para migrar os dados do banco de dados para o Amazon S3. Usar o AWS Database Migration Service (DMS) para migrar o banco de dados para o RDS"
+      "Replicar a chave padrão gerenciada de KMS pela AWS para Amazon S3 da conta de produção para a conta de desenvolvimento. Especifique a conta de produção na política de chaves.",
+      "Crie uma nova chave KMS gerenciada pelo cliente na conta de desenvolvimento. Especifique a conta de produção na política de chaves.",
+      "Replicar a chave KMS gerenciada pelo cliente da conta de produção para a conta de desenvolvimento. Especifique a conta de produção na política de chaves.",
+      "Crie uma nova chave KMS gerenciada pela AWS para o Amazon S3 na conta de desenvolvimento. Especifique a conta de produção na política de chaves."
     ],
     "correct": 1
-  },  
+  },
   {
-    "question": "Existem dois aplicativos em uma empresa: um aplicativo remetente que envia mensagens contendo cargas úteis e um aplicativo de processamento que recebe mensagens contendo cargas úteis. A empresa deseja implementar um serviço da AWS para lidar com mensagens entre esses dois aplicativos diferentes. O aplicativo remetente envia em média 1.000 mensagens por hora e as mensagens dependendo do tipo às vezes levam até 2 dias para serem processadas. Se as mensagens falharem no processamento, elas devem ser retidas para que não afetem o processamento de nenhuma mensagem restante. Qual solução atende a esses requisitos e é a MAIS eficiente operacionalmente?",
+    "question": "Uma empresa gera certificados SSL a partir de um provedor terceirizado. A empresa importa os certificados para o AWS Certificate Manager (ACM) para uso em aplicações web públicas. Um desenvolvedor deve implementar uma solução para notificar a equipe de segurança da empresa 90 dias antes do vencimento de um certificado importado. A empresa já configurou uma fila Amazon Simple Queue Service (Amazon SQS). A empresa também configurou um tópico Amazon Simple Notification Service (Amazon SNS) que contém o endereço de e-mail da equipe de segurança como assinante. Qual solução fornecerá à equipe de segurança a notificação necessária sobre os certificados?",
     "options": [
-      "Configure um banco de dados Redis no Amazon EC2. Configure a instância a ser usada por ambos os aplicativos. As mensagens devem ser armazenadas, processadas e excluídas, respectivamente",
-      "Inscrever o aplicativo de processamento em um tópico do Amazon Simple Notification Service (Amazon SNS) para receber notificações. Gravar no tópico do SNS usando o aplicativo do remetente",
-      "Receber as mensagens do aplicativo remetente usando um stream de dados do Amazon Kinesis. Utilizar a Kinesis Client Library (KCL) para integrar o aplicativo de processamento",
-      "Fornecer uma fila do Amazon Simple Queue Service (Amazon SQS) para os aplicativos do remetente e do processador. Configurar uma fila de mensagens mortas para coletar mensagens com falha"
+      "Crie uma função AWS Lambda para buscar todos os certificados que expiram em até 90 dias. Programe a função Lambda para enviar o Nome de Recursos Amazon (ARN) de cada certificado identificado em uma mensagem para a fila SQS.",
+      "Crie uma regra Amazon EventBridge que especifique o tipo de evento de Certificado ACM que se aproxima da expiração. Defina o tópico da SNS como alvo da regra do EventBridge.",
+      "Crie um fluxo de trabalho AWS Step Functions que seja invocado pela notificação de expiração de cada certificado pelo AWS CloudTrail. Crie uma função AWS Lambda para enviar o Nome de Recursos Amazon (ARN) de cada certificado em uma mensagem para a fila SQS.",
+      "Configure o AWS Config com a regra gerenciada acm-certificate-expiration-check para rodar a cada 24 horas. Crie uma regra Amazon EventBridge que inclua um padrão de evento que especifique o tipo de detalhe de Conformidade das Regras de Configuração e a regra configurada. Defina o tópico da SNS como alvo da regra do EventBridge."
+    ],
+    "correct": 3
+  },
+  {
+    "question": "Um desenvolvedor está implantando uma nova função AWS Lambda Node.js que não está conectada a uma VPC. A função Lambda precisa se conectar e consultar um banco de dados Amazon Aurora que não seja acessível publicamente. O desenvolvedor espera picos imprevisíveis no tráfego de banco de dados. O que o desenvolvedor deve fazer para dar acesso à função Lambda ao banco de dados?",
+    "options": [
+      "Configure a função Lambda para usar um proxy RDS da Amazon.",
+      "Configure um gateway NAT. Anexe o gateway NAT à função Lambda.",
+      "Ativem o acesso público no banco de dados Aurora. Configure um grupo de segurança no banco de dados para permitir o acesso de saída à porta do motor do banco de dados.",
+      "Ative o acesso ao VPC para a função Lambda. Anexe a função Lambda a um novo grupo de segurança que não tenha regras."
+    ],
+    "correct": 0
+  },
+  {
+    "question": "Um desenvolvedor está criando um aplicativo de negociação de ações. O desenvolvedor precisa de uma solução para enviar mensagens de texto aos usuários do aplicativo para confirmação quando uma negociação foi concluída. A solução deve entregar mensagens na ordem em que o usuário realiza as negociações de ações. A solução não deve enviar mensagens duplicadas. Qual solução atenderá a esses requisitos?",
+    "options": [
+      "Configure o aplicativo para publicar mensagens em um fluxo de entrega do Amazon Data Firehose. Configure o fluxo de entrega para ter um destino do número de celular de cada usuário que é passado na mensagem de confirmação de comércio.",
+      "Crie uma fila FIFO do Amazon Simple Queue Service (Amazon SQS). Use a chamada da API SendMessageln para enviar as mensagens de confirmação de negociação para a fila. Use a API SendMessageOut para enviar as mensagens aos usuários utilizando as informações fornecidas na mensagem de confirmação de negociação.",
+      "Configure um tubo no Amazon EventBridge Pipes. Conecte a aplicação ao tubo como fonte. Configure o tubo para usar o número de celular de cada usuário como alvo. Configure o pipeline para enviar eventos recebidos aos usuários.",
+      "Crie um tópico FIFO do Amazon Simple Notification Service (SNS). Configure o aplicativo para usar o AWS SDK para publicar notificações no tópico da SNS e enviar mensagens SMS aos usuários."
+    ],
+    "correct": 1
+  },
+  {
+    "question": "Um desenvolvedor precisa automatizar implantações para uma carga de trabalho serverless e baseada em eventos. O desenvolvedor precisa criar modelos padronizados para definir a infraestrutura e testar a funcionalidade da carga de trabalho localmente antes da implantação. O desenvolvedor já utiliza um pipeline no AWS CodePipeline. O desenvolvedor precisa incorporar quaisquer outras mudanças de infraestrutura no pipeline existente.\n\nQual solução atenderá a esses requisitos?",
+    "options": [
+      "Crie um modelo de Modelo de Aplicação Serverless AWS (AWS SAM). Configure os estágios do pipeline no CodePipeline para executar os comandos necessários da CLI SAM-AWS para implantar a carga de trabalho serverless.",
+      "Crie um modelo de fluxo de trabalho AWS Step Functions baseado na infraestrutura usando a linguagem Amazon States. Inicie a máquina de estados Step Functions a partir do pipeline existente.",
+      "Crie um modelo AWS CloudFormation. Use o fluxo de trabalho existente do pipeline para construir um pipeline para as pilhas AWS CloudFormation.",
+      "Crie um modelo de Modelo de Aplicação Serverless AWS (AWS SAM). Use um script automatizado para implantar a carga de trabalho serverless usando o comando deploy da CLI DA AWS SAM."
+    ],
+    "correct": 0
+  },
+  {
+    "question": "Um desenvolvedor está criando uma função AWS Lambda que precisa de acesso de rede a recursos privados em uma VPC. Qual solução vai proporcionar a esse acesso o MÍNIMO overhead operacional?",
+    "options": [
+      "Anexe a função Lambda à VPC por meio de sub-redes privadas. Crie um grupo de segurança que permita o acesso da rede aos recursos privados. Associe o grupo de segurança à função Lambda.",
+      "Configure a função Lambda para rotear tráfego por uma conexão VPN. Crie um grupo de segurança que permita o acesso da rede aos recursos privados. Associe o grupo de segurança à função Lambda.",
+      "Configure uma conexão de endpoint VPC para a função Lambda. Configure o endpoint da VPC para rotear o tráfego por um gateway NAT.",
+      "Configure um endpoint AWS PrivateLink para os recursos privados. Configure a função Lambda para referenciar o endpoint PrivateLink."
+    ],
+    "correct": 0
+  },
+  {
+    "question": "Um desenvolvedor está implantando uma aplicação em um cluster Amazon Elastic Container Service (Amazon ECS) que utiliza AWS Fargate. O desenvolvedor está usando um container Docker com uma imagem Ubuntu. O desenvolvedor precisa implementar uma solução para armazenar dados de aplicação disponíveis de múltiplas tarefas ECS. Os dados da aplicação devem permanecer acessíveis após o encerramento do container. Qual solução atenderá a esses requisitos?",
+    "options": [
+      "Anexe um volume do Amazon FSx for Windows File Server à definição do contêiner.",
+      "Especifique o parâmetro DockerVolumeConfiguration na definição da tarefa do ECS para anexar um volume Docker.",
+      "Crie um sistema de arquivos Amazon Elastic File System (Amazon EFS). Especifique o atributo mountPoints e o atributo efsVolumeConfiguration na definição da tarefa ECS.",
+      "Crie um volume da Amazon Elastic Block Store (Amazon EBS). Especifique a configuração do ponto de montagem na definição da tarefa ECS."
+    ],
+    "correct": 2
+  },
+  {
+    "question": "Uma equipe implanta um template AWS CloudFormation para atualizar uma pilha que já incluía uma tabela Amazon DynamoDB. No entanto, antes da implantação da atualização, a equipe mudou o nome da tabela DynamoDB no template por engano. O atributo DeletionPolicy para todos os recursos tem o valor padrão. Qual será o resultado desse erro?",
+    "options": [
+      "O CloudFormation criará uma nova tabela e apagará a tabela existente.",
+      "O CloudFormation criará uma nova tabela e manterá a tabela existente.",
+      "O CloudFormation irá sobrescrever a tabela existente e renomeá-la.",
+      "O CloudFormation manterá a tabela existente e não criará uma nova tabela."
+    ],
+    "correct": 0
+  },
+  {
+    "question": "Uma empresa tem um aplicativo que roda em instâncias Amazon EC2. A aplicação precisa usar flags de recursos dinâmicos que serão compartilhados com outros aplicativos. O aplicativo deve consultar um intervalo para novos valores de flag de funcionalidades. Os valores devem ser armazenados em cache quando forem recuperados. Qual solução atenderá a esses requisitos da forma MAIS eficiente operacionalmente?",
+    "options": [
+      "Armazene os valores das flags de característica no AWS Secrets Manager. Configure um nó Amazon ElastiCache para armazenar os valores em cache usando uma estratégia de carregamento preguiçosa na aplicação. Atualize o aplicativo para consultar os valores em um intervalo a partir do ElastiCache.",
+      "Armazene os valores das flags de características em uma tabela do Amazon DynamoDB. Configure o DynamoDB Accelerator (DAX) para armazenar os valores em cache usando uma estratégia de carregamento preguiçosa na aplicação. Atualize o aplicativo para consultar os valores em um intervalo a partir do DynamoDB.",
+      "Armazene os valores das flags de característica no AWS AppConfig. Configure o AWS AppConfig Agent nas instâncias EC2 para consultar os valores em um intervalo. Atualize o aplicativo para recuperar os valores do endpoint localhost do AppConfig Agent.",
+      "Armazene os valores das flags de característica na AWS Systems Manager Parameter Store. Configure o aplicativo para sondar em um intervalo. Configure a aplicação para usar o AWS SDK para recuperar os valores do Parameter Store e armazená-los na memória."
+    ],
+    "correct": 2
+  },
+  {
+    "question": "Um desenvolvedor possui um contêiner de aplicação, uma função AWS Lambda e uma fila Amazon Simple Queue Service (Amazon SQS). A função Lambda usa a fila SQS como fonte de eventos. A função Lambda faz uma chamada para uma API de aprendizado de máquina de terceiros quando a função é invocada. A resposta da API de terceiros pode levar até 60 segundos para retornar. O valor de tempo limite da função Lambda atualmente é de 65 segundos. O desenvolvedor percebeu que a função Lambda às vezes processa mensagens duplicadas da fila SQS. O que o desenvolvedor deve fazer para garantir que a função Lambda não processe mensagens duplicadas?",
+    "options": [
+      "Configure a função Lambda com uma quantidade maior de memória.",
+      "Configure um aumento no valor de timeout da função Lambda.",
+      "Configure o valor de atraso de entrega da fila SQS para ser maior do que o tempo máximo necessário para chamar a API de terceiros.",
+      "Configure o valor de tempo limite da fila SQS para ser maior do que o tempo máximo necessário para chamar a API de terceiros."
     ],
     "correct": 3
   }
