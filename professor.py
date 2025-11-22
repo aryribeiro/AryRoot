@@ -1,6 +1,6 @@
-# professor.py
+# professor.py - FIXED VERSION
 import streamlit as st
-from core import Teacher, Game, generate_game_code, SAMPLE_QUESTIONS
+from core import Teacher, Game, generate_game_code, SAMPLE_QUESTIONS, teacher_cache
 import bcrypt
 import json
 import os
@@ -8,46 +8,85 @@ import random
 import time
 import threading
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any, Dict
+import logging
+import uuid
 
-# Cache local para dados do professor
-professor_cache = {}
-cache_lock = threading.RLock()
+logger = logging.getLogger(__name__)
+
+# ==================== THREAD-SAFE LOCAL CACHE ====================
+class ThreadSafeProfessorCache:
+    """Cache local thread-safe para professores - FIXED"""
+    
+    def __init__(self):
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._lock = threading.RLock()
+    
+    def get(self, username: str) -> Optional[Teacher]:
+        with self._lock:
+            cached_data = self._cache.get(username)
+            if cached_data and (datetime.now() - cached_data['timestamp']).total_seconds() < 300:
+                return cached_data['teacher']
+        return None
+    
+    def set(self, teacher: Teacher):
+        with self._lock:
+            self._cache[teacher.username] = {
+                'teacher': teacher,
+                'timestamp': datetime.now()
+            }
+    
+    def delete(self, username: str):
+        with self._lock:
+            self._cache.pop(username, None)
+    
+    def clear(self):
+        with self._lock:
+            self._cache.clear()
+
+# Instância global thread-safe
+professor_local_cache = ThreadSafeProfessorCache()
 
 def navigate_to(page):
     st.session_state.page = page
 
-# Função para cache local do professor
-def get_cached_teacher(username: str) -> Optional[Teacher]:
-    with cache_lock:
-        cached_data = professor_cache.get(username)
-        if cached_data and (datetime.now() - cached_data['timestamp']).total_seconds() < 300:  # 5 minutos
-            return cached_data['teacher']
-    return None
+# ==================== RESILIENT OPERATIONS ====================
+class OperationResult:
+    """Result object para distinguir entre None válido e erro - NEW"""
+    
+    def __init__(self, success: bool, data: Any = None, error: str = None):
+        self.success = success
+        self.data = data
+        self.error = error
+    
+    def __bool__(self):
+        return self.success
 
-def cache_teacher(teacher: Teacher):
-    with cache_lock:
-        professor_cache[teacher.username] = {
-            'teacher': teacher,
-            'timestamp': datetime.now()
-        }
-
-# Operações resilientes para professor
-def resilient_teacher_operation(func, max_retries=3):
-    """Wrapper para operações de professor com retry"""
+def resilient_teacher_operation(func, max_retries=3) -> OperationResult:
+    """Wrapper resiliente com Result pattern - FIXED: melhor error handling"""
+    last_exception = None
+    
     for attempt in range(max_retries):
         try:
-            return func()
+            result = func()
+            return OperationResult(success=True, data=result)
+            
         except Exception as e:
+            last_exception = e
+            logger.error(f"Teacher operation error (attempt {attempt+1}/{max_retries}): {e}")
+            
             if attempt < max_retries - 1:
-                time.sleep(0.5 * (2 ** attempt))  # Backoff exponencial
+                delay = 0.5 * (2 ** attempt) + random.uniform(0, 0.15)
+                time.sleep(delay)
                 continue
-            else:
-                st.error(f"Erro na operação: {str(e)}")
-                return None
+    
+    error_msg = str(last_exception) if last_exception else "Unknown error"
+    return OperationResult(success=False, error=error_msg)
 
-# Sistema de Captcha otimizado
+# ==================== CAPTCHA MANAGER ====================
 class CaptchaManager:
+    """Sistema de captcha thread-safe"""
+    
     def __init__(self):
         self._lock = threading.RLock()
     
@@ -71,6 +110,7 @@ class CaptchaManager:
 
 captcha_manager = CaptchaManager()
 
+# ==================== RENDER FUNCTIONS ====================
 def render_teacher_login():
     st.markdown("<p style='text-align: center; font-size: 24px; margin-bottom: 10px;'><strong>🔐 Login do Professor</strong></p>", unsafe_allow_html=True)
     
@@ -115,33 +155,36 @@ def render_teacher_login():
                 
                 def login_operation():
                     # Verificar cache primeiro
-                    teacher = get_cached_teacher(login_username)
+                    teacher = professor_local_cache.get(login_username)
                     if not teacher:
                         teacher = Teacher.get_by_username(login_username)
                         if teacher:
-                            cache_teacher(teacher)
-                    
-                    if teacher and teacher.password:
-                        if bcrypt.checkpw(login_password.encode('utf-8'), teacher.password.encode('utf-8')):
-                            return teacher
-                    return None
+                            professor_local_cache.set(teacher)
+                    return teacher
                 
                 with st.spinner("Autenticando..."):
-                    teacher = resilient_teacher_operation(login_operation)
+                    result = resilient_teacher_operation(login_operation)
                 
-                if teacher:
-                    # Login bem-sucedido
-                    st.session_state.username = login_username
-                    st.session_state.user_type = "teacher"
-                    st.session_state.login_time = time.time()
-                    
-                    # Limpar campos de login
-                    for key in ["captcha_question", "captcha_answer", "login_username", "login_password", "captcha_input"]:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    
-                    navigate_to("teacher_dashboard")
-                    st.rerun()
+                if result.success and result.data:
+                    teacher = result.data
+                    if teacher.password and bcrypt.checkpw(login_password.encode('utf-8'), teacher.password.encode('utf-8')):
+                        # Login bem-sucedido
+                        st.session_state.username = login_username
+                        st.session_state.user_type = "teacher"
+                        st.session_state.login_time = time.time()
+                        st.session_state.last_activity = time.time()
+                        
+                        # Limpar campos de login
+                        for key in ["captcha_question", "captcha_answer", "login_username", "login_password", "captcha_input"]:
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        
+                        navigate_to("teacher_dashboard")
+                        st.rerun()
+                    else:
+                        st.error("Nome de usuário ou senha incorretos.")
+                        captcha_manager.generate_captcha()
+                        st.rerun()
                 else:
                     st.error("Nome de usuário ou senha incorretos.")
                     captcha_manager.generate_captcha()
@@ -179,7 +222,8 @@ def render_teacher_signup():
                 def check_user_exists():
                     return Teacher.get_by_username(username) is not None
                 
-                if resilient_teacher_operation(check_user_exists):
+                result = resilient_teacher_operation(check_user_exists)
+                if result.success and result.data:
                     st.error("Este nome de usuário já está em uso.")
                     return
                 
@@ -187,13 +231,13 @@ def render_teacher_signup():
                 def create_teacher():
                     teacher = Teacher.create(username, password, name, email)
                     teacher.save()
-                    cache_teacher(teacher)
+                    professor_local_cache.set(teacher)
                     return teacher
                 
                 with st.spinner("Cadastrando professor..."):
-                    new_teacher = resilient_teacher_operation(create_teacher)
+                    result = resilient_teacher_operation(create_teacher)
                 
-                if new_teacher:
+                if result.success and result.data:
                     st.success("Professor cadastrado com sucesso!")
                     
                     # Redirecionamento baseado no tipo de usuário
@@ -203,7 +247,7 @@ def render_teacher_signup():
                         navigate_to("home")
                     st.rerun()
                 else:
-                    st.error("Erro ao cadastrar professor. Tente novamente.")
+                    st.error(f"Erro ao cadastrar professor: {result.error}")
 
         # Botões de navegação
         st.markdown("<br>", unsafe_allow_html=True)
@@ -226,6 +270,9 @@ def render_teacher_dashboard():
         st.rerun()
         return
     
+    # Atualizar atividade
+    st.session_state.last_activity = time.time()
+    
     # Renderizar formulários de edição se necessário
     if st.session_state.get("editing_teacher_username"):
         render_edit_teacher_form(st.session_state.editing_teacher_username)
@@ -239,7 +286,8 @@ def render_teacher_dashboard():
     def load_teacher_games():
         return Game.get_by_teacher(st.session_state.username)
     
-    teacher_games = resilient_teacher_operation(load_teacher_games) or []
+    result = resilient_teacher_operation(load_teacher_games)
+    teacher_games = result.data if result.success else []
     active_games = [g for g in teacher_games if g.status in ["waiting", "active"]]
     
     # Mostrar jogos ativos
@@ -260,19 +308,19 @@ def render_teacher_dashboard():
     
     # Carregar perguntas do professor
     def load_teacher_questions():
-        # Verificar cache primeiro
-        teacher = get_cached_teacher(st.session_state.username)
+        teacher = professor_local_cache.get(st.session_state.username)
         if not teacher:
             teacher = Teacher.get_by_username(st.session_state.username)
             if teacher:
-                cache_teacher(teacher)
+                professor_local_cache.set(teacher)
         
         if teacher:
             return teacher.questions
         return SAMPLE_QUESTIONS if st.session_state.username == "professor" else []
     
     if "temp_questions" not in st.session_state or st.session_state.get("user_for_temp_q") != st.session_state.username:
-        st.session_state.temp_questions = resilient_teacher_operation(load_teacher_questions) or []
+        result = resilient_teacher_operation(load_teacher_questions)
+        st.session_state.temp_questions = result.data if result.success else []
         st.session_state.user_for_temp_q = st.session_state.username
     
     # Tabs do dashboard
@@ -333,11 +381,16 @@ def render_regular_teacher_actions():
         logout_user()
 
 def create_new_game():
-    """Cria um novo jogo"""
+    """Cria um novo jogo com idempotência"""
+    operation_id = f"create_game:{st.session_state.username}:{uuid.uuid4()}"
+    
     def game_creation():
         game_code = generate_game_code()
         # Garantir código único
-        while Game.get_by_code(game_code):
+        max_attempts = 10
+        for _ in range(max_attempts):
+            if not Game.get_by_code(game_code):
+                break
             game_code = generate_game_code()
         
         new_game = Game(
@@ -349,25 +402,23 @@ def create_new_game():
         return new_game
     
     with st.spinner("Criando novo jogo..."):
-        new_game = resilient_teacher_operation(game_creation)
+        result = resilient_teacher_operation(game_creation)
     
-    if new_game:
-        st.session_state.game_code = new_game.code
+    if result.success and result.data:
+        st.session_state.game_code = result.data.code
         navigate_to("teacher_game_control")
         st.rerun()
     else:
-        st.error("Erro ao criar jogo. Tente novamente.")
+        st.error(f"Erro ao criar jogo: {result.error}")
 
 def logout_user():
     """Realiza logout do usuário"""
-    # Limpar cache do professor
     username = st.session_state.get("username")
     if username:
-        with cache_lock:
-            professor_cache.pop(username, None)
+        professor_local_cache.delete(username)
     
     # Limpar sessão
-    keys_to_preserve = []  # Não preservar nenhuma chave específica
+    keys_to_preserve = []
     for key in list(st.session_state.keys()):
         if key not in keys_to_preserve:
             del st.session_state[key]
@@ -389,15 +440,13 @@ def render_teacher_management():
                     return Teacher.delete_by_username(teacher_to_remove)
                 
                 with st.spinner(f"Removendo professor {teacher_to_remove}..."):
-                    success = resilient_teacher_operation(remove_teacher)
+                    result = resilient_teacher_operation(remove_teacher)
                 
-                if success:
+                if result.success and result.data:
                     st.success(f"Professor '{teacher_to_remove}' removido.")
-                    # Limpar cache
-                    with cache_lock:
-                        professor_cache.pop(teacher_to_remove, None)
+                    professor_local_cache.delete(teacher_to_remove)
                 else:
-                    st.error(f"Erro ao remover professor '{teacher_to_remove}'.")
+                    st.error(f"Erro ao remover professor: {result.error}")
                 
                 del st.session_state.teacher_to_remove_confirm
                 st.rerun()
@@ -409,11 +458,12 @@ def render_teacher_management():
         
         st.divider()
     
-    # Listar professores
+    # Listar professores - FIXED: copiar lista para evitar modificação durante iteração
     def load_all_teachers():
         return Teacher.get_all_teachers_except_admin()
     
-    teachers_to_manage = resilient_teacher_operation(load_all_teachers) or []
+    result = resilient_teacher_operation(load_all_teachers)
+    teachers_to_manage = list(result.data) if result.success and result.data else []
     
     if not teachers_to_manage:
         st.info("Nenhum outro professor cadastrado.")
@@ -491,16 +541,16 @@ def remove_question(index):
             if teacher:
                 teacher.questions = st.session_state.temp_questions
                 teacher.save()
-                cache_teacher(teacher)
+                professor_local_cache.set(teacher)
         return True
     
     with st.spinner("Removendo pergunta..."):
-        success = resilient_teacher_operation(remove_operation)
+        result = resilient_teacher_operation(remove_operation)
     
-    if success:
+    if result.success:
         st.success("Pergunta removida!")
     else:
-        st.error("Erro ao remover pergunta.")
+        st.error(f"Erro ao remover pergunta: {result.error}")
     
     st.rerun()
 
@@ -571,33 +621,32 @@ def add_new_question(question_text, options_inputs, correct_index, form_key):
             if teacher:
                 teacher.questions = st.session_state.temp_questions
                 teacher.save()
-                cache_teacher(teacher)
+                professor_local_cache.set(teacher)
         return True
     
     with st.spinner("Adicionando pergunta..."):
-        success = resilient_teacher_operation(save_operation)
+        result = resilient_teacher_operation(save_operation)
     
-    if success:
+    if result.success:
         st.success("Pergunta adicionada!")
-        # Incrementar instância do formulário para limpar campos
         st.session_state.add_q_form_instance += 1
     else:
-        st.error("Erro ao adicionar pergunta.")
+        st.error(f"Erro ao adicionar pergunta: {result.error}")
     
     st.rerun()
 
 def render_edit_teacher_form(teacher_username_to_edit):
     """Renderiza formulário de edição de professor"""
     def load_teacher():
-        # Verificar cache primeiro
-        teacher = get_cached_teacher(teacher_username_to_edit)
+        teacher = professor_local_cache.get(teacher_username_to_edit)
         if not teacher:
             teacher = Teacher.get_by_username(teacher_username_to_edit)
             if teacher:
-                cache_teacher(teacher)
+                professor_local_cache.set(teacher)
         return teacher
     
-    teacher_to_edit = resilient_teacher_operation(load_teacher)
+    result = resilient_teacher_operation(load_teacher)
+    teacher_to_edit = result.data if result.success else None
     
     if not teacher_to_edit:
         st.error(f"Professor '{teacher_username_to_edit}' não encontrado para edição.")
@@ -654,13 +703,13 @@ def save_teacher_changes(teacher, new_name, new_email, new_password, confirm_new
     # Salvar alterações
     def save_operation():
         teacher.save()
-        cache_teacher(teacher)  # Atualizar cache
+        professor_local_cache.set(teacher)
         return True
     
     with st.spinner("Salvando alterações..."):
-        success = resilient_teacher_operation(save_operation)
+        result = resilient_teacher_operation(save_operation)
     
-    if success:
+    if result.success:
         st.success(f"Professor '{teacher.username}' atualizado com sucesso!")
         if new_password:
             st.info("A senha foi alterada.")
@@ -669,7 +718,7 @@ def save_teacher_changes(teacher, new_name, new_email, new_password, confirm_new
             del st.session_state.editing_teacher_username
         st.rerun()
     else:
-        st.error("Erro ao salvar alterações.")
+        st.error(f"Erro ao salvar alterações: {result.error}")
 
 def render_edit_question_form():
     """Renderiza formulário de edição de pergunta"""
@@ -749,18 +798,18 @@ def save_question_changes(q_idx, question_text, options, correct_index):
             if teacher:
                 teacher.questions = st.session_state.temp_questions
                 teacher.save()
-                cache_teacher(teacher)
+                professor_local_cache.set(teacher)
         return True
     
     with st.spinner("Salvando pergunta..."):
-        success = resilient_teacher_operation(save_operation)
+        result = resilient_teacher_operation(save_operation)
     
-    if success:
+    if result.success:
         st.success(f"Pergunta {q_idx + 1} atualizada com sucesso!")
         clear_editing_state()
         st.rerun()
     else:
-        st.error("Erro ao salvar pergunta.")
+        st.error(f"Erro ao salvar pergunta: {result.error}")
 
 def clear_editing_state():
     """Limpa estado de edição"""
@@ -804,16 +853,16 @@ def render_upload_questions_json_page():
                     if teacher:
                         teacher.questions = st.session_state.temp_questions
                         teacher.save()
-                        cache_teacher(teacher)
+                        professor_local_cache.set(teacher)
                 return True
             
             with st.spinner("Salvando perguntas carregadas..."):
-                success = resilient_teacher_operation(save_questions)
+                result = resilient_teacher_operation(save_questions)
             
-            if success:
+            if result.success:
                 st.success(f"{len(valid_questions)} perguntas carregadas e validadas com sucesso!")
             else:
-                st.error("Erro ao salvar perguntas. Tente novamente.")
+                st.error(f"Erro ao salvar perguntas: {result.error}")
                 
         except json.JSONDecodeError:
             st.error("Arquivo JSON inválido. Verifique a sintaxe do arquivo.")
@@ -871,7 +920,9 @@ def render_teacher_game_control():
     def load_current_game():
         return Game.get_by_code(current_game_code)
     
-    current_game = resilient_teacher_operation(load_current_game)
+    result = resilient_teacher_operation(load_current_game)
+    current_game = result.data if result.success else None
+    
     if not current_game:
         st.error(f"Jogo com código {current_game_code} não encontrado!")
         navigate_to("teacher_dashboard")
@@ -926,12 +977,12 @@ def start_game_operation(game):
         return True
     
     with st.spinner("Iniciando jogo..."):
-        success = resilient_teacher_operation(start_operation)
+        result = resilient_teacher_operation(start_operation)
     
-    if success:
+    if result.success:
         st.rerun()
     else:
-        st.error("Erro ao iniciar jogo.")
+        st.error(f"Erro ao iniciar jogo: {result.error}")
 
 def next_question_operation(game):
     """Avança para próxima pergunta"""
@@ -939,10 +990,10 @@ def next_question_operation(game):
         return game.next_question()
     
     with st.spinner("Carregando próxima pergunta..."):
-        proceed = resilient_teacher_operation(next_operation)
+        result = resilient_teacher_operation(next_operation)
     
-    if proceed is not None:
-        if proceed:
+    if result.success and result.data is not None:
+        if result.data:
             st.session_state.show_ranking = True
             st.rerun()
         else:
@@ -959,13 +1010,13 @@ def finish_game_operation(game):
         return True
     
     with st.spinner("Finalizando jogo..."):
-        success = resilient_teacher_operation(finish_operation)
+        result = resilient_teacher_operation(finish_operation)
     
-    if success:
+    if result.success:
         navigate_to("game_results")
         st.rerun()
     else:
-        st.error("Erro ao finalizar jogo.")
+        st.error(f"Erro ao finalizar jogo: {result.error}")
 
 def render_game_info(current_game):
     """Renderiza informações do jogo"""
@@ -973,7 +1024,7 @@ def render_game_info(current_game):
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.header(f"🔑 Código: `{current_game.code}`")
+        st.header(f"🔒 Código: `{current_game.code}`")
         st.caption(f"Status: {current_game.status.capitalize()}")
         
         if current_game.status == "waiting":
@@ -1041,7 +1092,8 @@ def render_current_ranking(game):
     def get_ranking():
         return game.get_ranking()
     
-    ranking_data = resilient_teacher_operation(get_ranking) or []
+    result = resilient_teacher_operation(get_ranking)
+    ranking_data = result.data if result.success else []
     
     if not ranking_data:
         st.info("Nenhum jogador pontuou ainda.")

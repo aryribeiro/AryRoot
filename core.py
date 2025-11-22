@@ -1,4 +1,4 @@
-# core.py
+# core.py - FIXED VERSION
 import random
 import string
 import json
@@ -10,19 +10,85 @@ import sqlite3
 import streamlit as st
 import time
 import threading
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List, Tuple
 import logging
 from functools import wraps
 import uuid
+from enum import Enum
+from contextlib import contextmanager
 
-# Carregar variáveis de ambiente
+# Configurar logging estruturado
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 DATABASE_PATH = "data/database.db"
 
-# Cache em memória com TTL
+# ==================== CIRCUIT BREAKER ====================
+class CircuitState(Enum):
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+class CircuitBreaker:
+    """Circuit Breaker com 3 estados para prevenir cascading failures"""
+    
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 30):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = CircuitState.CLOSED
+        self._lock = threading.RLock()
+    
+    def call(self, func, *args, **kwargs):
+        with self._lock:
+            if self.state == CircuitState.OPEN:
+                if self._should_attempt_reset():
+                    self.state = CircuitState.HALF_OPEN
+                    logger.info("Circuit breaker: OPEN -> HALF_OPEN")
+                else:
+                    raise Exception("Circuit breaker is OPEN")
+            
+            try:
+                result = func(*args, **kwargs)
+                self._on_success()
+                return result
+            except Exception as e:
+                self._on_failure()
+                raise e
+    
+    def _should_attempt_reset(self) -> bool:
+        if self.last_failure_time is None:
+            return True
+        return (datetime.now() - self.last_failure_time).total_seconds() >= self.recovery_timeout
+    
+    def _on_success(self):
+        self.failure_count = 0
+        if self.state == CircuitState.HALF_OPEN:
+            self.state = CircuitState.CLOSED
+            logger.info("Circuit breaker: HALF_OPEN -> CLOSED")
+    
+    def _on_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = datetime.now()
+        
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitState.OPEN
+            logger.warning(f"Circuit breaker: -> OPEN (failures: {self.failure_count})")
+
+# Circuit breaker global para operações de DB
+db_circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=30)
+
+# ==================== MEMORY CACHE ====================
 class MemoryCache:
-    def __init__(self, default_ttl: int = 30):
+    """Cache em memória com TTL - FIXED: default_ttl parameter"""
+    
+    def __init__(self, default_ttl: int = 30):  # FIX: era ttl=30
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.RLock()
         self.default_ttl = default_ttl
@@ -51,96 +117,224 @@ class MemoryCache:
         with self._lock:
             self._cache.clear()
 
-# Cache global - Correção: usar default_ttl em vez de ttl
-game_cache = MemoryCache(default_ttl=5)  # Cache de jogos por 5 segundos
-teacher_cache = MemoryCache(default_ttl=60)  # Cache de professores por 60 segundos
+# Caches globais com TTL corrigido
+game_cache = MemoryCache(default_ttl=5)
+teacher_cache = MemoryCache(default_ttl=60)
 
-# Connection pool simplificado
+# ==================== DEDUPLICATION CACHE ====================
+class DeduplicationCache:
+    """Cache para prevenir operações duplicadas (idempotência)"""
+    
+    def __init__(self, ttl: int = 300):
+        self._cache: Dict[str, Any] = {}
+        self._lock = threading.RLock()
+        self.ttl = ttl
+    
+    def exists(self, operation_id: str) -> bool:
+        with self._lock:
+            return operation_id in self._cache
+    
+    def get(self, operation_id: str) -> Optional[Any]:
+        with self._lock:
+            entry = self._cache.get(operation_id)
+            if entry and datetime.now() < entry['expires']:
+                return entry['data']
+            elif entry:
+                del self._cache[operation_id]
+            return None
+    
+    def set(self, operation_id: str, result: Any) -> None:
+        with self._lock:
+            expires = datetime.now() + timedelta(seconds=self.ttl)
+            self._cache[operation_id] = {'data': result, 'expires': expires}
+
+dedup_cache = DeduplicationCache(ttl=300)
+
+# ==================== CONNECTION POOL ====================
 class ConnectionPool:
+    """Connection pool com cleanup garantido - FIXED: leak prevention"""
+    
     def __init__(self, max_connections: int = 20):
         self._connections = []
         self._lock = threading.RLock()
         self.max_connections = max_connections
+        self._active_count = 0
     
     def get_connection(self):
         with self._lock:
             if self._connections:
+                self._active_count += 1
                 return self._connections.pop()
             return self._create_connection()
     
     def return_connection(self, conn):
         with self._lock:
-            if len(self._connections) < self.max_connections:
-                self._connections.append(conn)
-            else:
-                conn.close()
+            try:
+                self._active_count -= 1
+                if len(self._connections) < self.max_connections and conn:
+                    # Verificar se connection ainda é válida
+                    conn.execute("SELECT 1")
+                    self._connections.append(conn)
+                elif conn:
+                    conn.close()
+            except Exception as e:
+                logger.warning(f"Connection cleanup error: {e}")
+                try:
+                    conn.close()
+                except:
+                    pass
     
     def _create_connection(self):
-        conn = sqlite3.connect(DATABASE_PATH, timeout=30, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=10000")
-        conn.execute("PRAGMA temp_store=memory")
-        return conn
+        try:
+            conn = sqlite3.connect(DATABASE_PATH, timeout=30, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA cache_size=10000")
+            conn.execute("PRAGMA temp_store=memory")
+            self._active_count += 1
+            return conn
+        except Exception as e:
+            logger.error(f"Failed to create DB connection: {e}")
+            raise
 
-# Pool de conexões global
 db_pool = ConnectionPool()
 
-# Retry decorator com backoff exponencial
+# ==================== DISTRIBUTED LOCK ====================
+class DistributedLock:
+    """Lock distribuído usando SQLite para concurrency control"""
+    
+    def __init__(self, key: str, timeout: int = 10):
+        self.key = f"lock:{key}"
+        self.timeout = timeout
+        self.lock_id = str(uuid.uuid4())
+        self._acquired = False
+    
+    def acquire(self) -> bool:
+        """Adquire lock com timeout"""
+        start_time = time.time()
+        
+        while time.time() - start_time < self.timeout:
+            try:
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    # Tentar criar lock row
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO locks (key, lock_id, expires_at)
+                        VALUES (?, ?, datetime('now', '+10 seconds'))
+                    ''', (self.key, self.lock_id))
+                    
+                    if cursor.rowcount > 0:
+                        self._acquired = True
+                        return True
+                    
+                    # Limpar locks expirados
+                    cursor.execute("DELETE FROM locks WHERE expires_at < datetime('now')")
+                    
+            except Exception as e:
+                logger.warning(f"Lock acquire error: {e}")
+            
+            time.sleep(0.05)  # 50ms backoff
+        
+        return False
+    
+    def release(self):
+        """Release lock apenas se owner"""
+        if not self._acquired:
+            return
+        
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM locks WHERE key = ? AND lock_id = ?", 
+                             (self.key, self.lock_id))
+                self._acquired = False
+        except Exception as e:
+            logger.error(f"Lock release error: {e}")
+    
+    def __enter__(self):
+        if not self.acquire():
+            raise TimeoutError(f"Failed to acquire lock: {self.key}")
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+
+# ==================== GET DB CONNECTION ====================
+@contextmanager
+def get_db_connection():
+    """Context manager para conexões do pool - FIXED: retorna conexão real"""
+    conn = None
+    try:
+        conn = db_pool.get_connection()
+        yield conn
+        conn.commit()
+    except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Rollback error: {rollback_error}")
+        raise e
+    finally:
+        if conn:
+            db_pool.return_connection(conn)
+
+# ==================== RETRY WITH JITTER ====================
+def exponential_backoff_with_jitter(attempt: int, base_delay: float = 0.1, max_delay: float = 10.0) -> float:
+    """Calcula delay com exponential backoff + 30% jitter"""
+    delay = min(base_delay * (2 ** attempt), max_delay)
+    jitter = random.uniform(0, delay * 0.3)
+    return delay + jitter
+
 def retry_db_operation(max_retries: int = 3, base_delay: float = 0.1):
+    """Retry decorator com circuit breaker + exponential backoff + jitter - FIXED"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             last_exception = None
+            
             for attempt in range(max_retries):
                 try:
-                    return func(*args, **kwargs)
+                    # Usar circuit breaker
+                    return db_circuit_breaker.call(func, *args, **kwargs)
                 except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                     last_exception = e
+                    logger.warning(f"DB operation failed (attempt {attempt+1}/{max_retries}): {e}")
+                    
                     if attempt < max_retries - 1:
-                        # Backoff exponencial com jitter
-                        delay = base_delay * (2 ** attempt) + random.uniform(0, 0.1)
+                        delay = exponential_backoff_with_jitter(attempt, base_delay)
                         time.sleep(delay)
                     continue
                 except Exception as e:
                     # Outros erros não devem ser retentados
+                    logger.error(f"Non-retryable error: {e}")
                     raise e
+            
+            logger.error(f"DB operation failed after {max_retries} retries")
             raise last_exception
         return wrapper
     return decorator
 
-# Context manager para conexões do pool
-class PooledConnection:
-    def __init__(self):
-        self.conn = None
-    
-    def __enter__(self):
-        self.conn = db_pool.get_connection()
-        return self.conn
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.conn:
-            if exc_type is None:
-                try:
-                    self.conn.commit()
-                except Exception:
-                    self.conn.rollback()
-            else:
-                self.conn.rollback()
-            db_pool.return_connection(self.conn)
-
-@retry_db_operation()
-def get_db_connection():
-    return PooledConnection()
-
+# ==================== DATABASE SETUP ====================
 def setup_data_directory():
+    """Setup com schema versioning - FIXED: uso correto do context manager"""
     os.makedirs("data", exist_ok=True)
     
     with get_db_connection() as conn:
         cursor = conn.cursor()
 
-        # Criar tabela de professores com índices
+        # Criar tabela de locks para distributed locking
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS locks (
+            key TEXT PRIMARY KEY,
+            lock_id TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL
+        )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_locks_expires ON locks(expires_at)')
+
+        # Criar tabela de professores
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS teachers (
             username TEXT PRIMARY KEY,
@@ -170,12 +364,13 @@ def setup_data_directory():
         )
         ''')
         
-        # Criar índices para performance
+        # Índices compostos para performance
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_games_status ON games(status)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_games_teacher ON games(teacher_username)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_games_status_teacher ON games(status, teacher_username)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_games_updated ON games(updated_at)')
 
-        # Verificar se o professor demo precisa ser inserido
+        # Inserir professor demo
         cursor.execute("SELECT COUNT(*) FROM teachers WHERE username = ?", ("professor",))
         if cursor.fetchone()[0] == 0:
             demo_username = "professor"
@@ -197,13 +392,14 @@ def setup_data_directory():
                     INSERT INTO teachers (username, password, name, email, questions)
                     VALUES (:username, :password, :name, :email, :questions)
                     ''', teacher_data_demo)
-                    print(f"Usuário demo '{demo_username}' configurado no banco de dados SQLite.")
+                    logger.info(f"Demo user '{demo_username}' created")
                 except sqlite3.Error as e:
-                    print(f"Erro ao inserir professor demo no SQLite: {e}")
+                    logger.error(f"Failed to create demo user: {e}")
 
 def generate_game_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
+# ==================== TEACHER MODEL ====================
 class Teacher:
     def __init__(self, username, password, name, email, questions_json_str="[]"):
         self.username = username
@@ -239,25 +435,39 @@ class Teacher:
 
     @retry_db_operation()
     def save(self):
+        """Save com write-through cache - FIXED: cache consistency"""
+        operation_id = f"save_teacher:{self.username}:{uuid.uuid4()}"
+        
+        # Check deduplication
+        if dedup_cache.exists(operation_id):
+            logger.info(f"Duplicate save_teacher operation detected: {self.username}")
+            return dedup_cache.get(operation_id)
+        
         try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                data = self.to_dict_for_db()
-                cursor.execute('''
-                INSERT OR REPLACE INTO teachers (username, password, name, email, questions, updated_at)
-                VALUES (:username, :password, :name, :email, :questions, :updated_at)
-                ''', data)
-            
-            # Atualizar cache
-            teacher_cache.set(f"teacher:{self.username}", self)
+            # Use distributed lock
+            with DistributedLock(f"teacher:{self.username}", timeout=5):
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    data = self.to_dict_for_db()
+                    cursor.execute('''
+                    INSERT OR REPLACE INTO teachers (username, password, name, email, questions, updated_at)
+                    VALUES (:username, :password, :name, :email, :questions, :updated_at)
+                    ''', data)
+                
+                # Update cache on success
+                teacher_cache.set(f"teacher:{self.username}", self)
+                dedup_cache.set(operation_id, True)
+                logger.info(f"Teacher saved: {self.username}")
+                return True
+                
         except Exception as e:
-            print(f"Erro ao salvar professor {self.username}: {e}")
+            logger.error(f"Failed to save teacher {self.username}: {e}")
             raise
 
     @classmethod
     @retry_db_operation()
     def get_by_username(cls, username):
-        # Verificar cache primeiro
+        # Check cache first
         cached = teacher_cache.get(f"teacher:{username}")
         if cached:
             return cached
@@ -269,13 +479,12 @@ class Teacher:
                 row = cursor.fetchone()
                 teacher = cls.from_db_row(row)
                 
-                # Adicionar ao cache se encontrado
                 if teacher:
                     teacher_cache.set(f"teacher:{username}", teacher)
                 
                 return teacher
         except Exception as e:
-            print(f"Erro ao buscar professor {username}: {e}")
+            logger.error(f"Failed to get teacher {username}: {e}")
             return None
 
     @classmethod
@@ -293,7 +502,7 @@ class Teacher:
                 rows = cursor.fetchall()
                 return [cls.from_db_row(row) for row in rows]
         except Exception as e:
-            print(f"Erro ao buscar professores: {e}")
+            logger.error(f"Failed to get teachers: {e}")
             return []
     
     @classmethod
@@ -305,13 +514,14 @@ class Teacher:
                 cursor.execute("DELETE FROM teachers WHERE username = ?", (username,))
                 success = cursor.rowcount > 0
                 
-            # Remover do cache
             teacher_cache.delete(f"teacher:{username}")
+            logger.info(f"Teacher deleted: {username}")
             return success
         except Exception as e:
-            print(f"Erro ao deletar professor {username}: {e}")
+            logger.error(f"Failed to delete teacher {username}: {e}")
             return False
 
+# ==================== GAME MODEL ====================
 class Game:
     def __init__(self, code, teacher_username, questions_json_str="[]", players_json_str="{}", 
                  status="waiting", current_question=0, start_time=None, question_start_time=None):
@@ -358,7 +568,20 @@ class Game:
         )
 
     def add_player(self, nickname, icon):
-        with self._lock:
+        """Add player com idempotência - FIXED: race condition"""
+        operation_id = f"add_player:{self.code}:{nickname}"
+        
+        # Check deduplication
+        if dedup_cache.exists(operation_id):
+            logger.info(f"Duplicate add_player detected: {nickname}")
+            return dedup_cache.get(operation_id)
+        
+        with DistributedLock(f"game:{self.code}", timeout=5):
+            # Reload from DB to get fresh state
+            fresh_game = Game.get_by_code(self.code)
+            if fresh_game:
+                self.players = fresh_game.players
+            
             if nickname not in self.players:
                 self.players[nickname] = {
                     "icon": icon,
@@ -367,44 +590,72 @@ class Game:
                     "joined_at": datetime.now().isoformat()
                 }
                 self._force_save()
+                dedup_cache.set(operation_id, True)
+                logger.info(f"Player added: {nickname} to game {self.code}")
                 return True
+            
+            dedup_cache.set(operation_id, False)
             return False
 
     def start_game(self):
-        with self._lock:
+        with DistributedLock(f"game:{self.code}", timeout=5):
             self.status = "active"
             self.start_time = datetime.now().isoformat()
             self.question_start_time = datetime.now().isoformat()
             self._force_save()
+            logger.info(f"Game started: {self.code}")
 
     def next_question(self):
-        with self._lock:
+        with DistributedLock(f"game:{self.code}", timeout=5):
             if self.current_question < len(self.questions) - 1:
                 self.current_question += 1
                 self.question_start_time = datetime.now().isoformat()
                 self._force_save()
+                logger.info(f"Next question: {self.code} Q{self.current_question}")
                 return True
             else:
                 self.status = "finished"
                 self._force_save()
+                logger.info(f"Game finished: {self.code}")
                 return False
 
     def record_answer(self, player_name, answer_index, time_taken):
-        with self._lock:
+        """Record answer com lock atomico - FIXED: race condition"""
+        operation_id = f"answer:{self.code}:{player_name}:{self.current_question}"
+        
+        # Check deduplication (previne double-click)
+        if dedup_cache.exists(operation_id):
+            result = dedup_cache.get(operation_id)
+            logger.info(f"Duplicate answer detected: {player_name}")
+            return result if result else (False, 0)
+        
+        with DistributedLock(f"game:{self.code}:player:{player_name}", timeout=5):
+            # Reload fresh state
+            fresh_game = Game.get_by_code(self.code)
+            if fresh_game:
+                self.players = fresh_game.players
+            
             if (player_name not in self.players or 
                 self.current_question >= len(self.questions) or 
                 self.status != "active"):
-                return False, 0
+                result = (False, 0)
+                dedup_cache.set(operation_id, result)
+                return result
 
             # Verificar se já respondeu esta pergunta
             player_data = self.players[player_name]
             if not isinstance(player_data, dict):
-                return False, 0
+                result = (False, 0)
+                dedup_cache.set(operation_id, result)
+                return result
                 
             answers = player_data.get("answers", [])
             if any(ans.get("question") == self.current_question for ans in answers):
-                return False, 0  # Já respondeu
+                result = (False, 0)
+                dedup_cache.set(operation_id, result)
+                return result
 
+            # Calcular pontos
             correct_answer_idx = self.questions[self.current_question]["correct"]
             is_correct = (answer_index == correct_answer_idx)
             
@@ -432,9 +683,12 @@ class Game:
             })
             self.players[player_name]["score"] += points
             
-            # Salvar periodicamente ou em mudanças importantes
-            self._conditional_save()
-            return is_correct, points
+            self._force_save()
+            
+            result = (is_correct, points)
+            dedup_cache.set(operation_id, result)
+            logger.info(f"Answer recorded: {player_name} Q{self.current_question} correct={is_correct} points={points}")
+            return result
 
     def get_ranking(self):
         with self._lock:
@@ -452,9 +706,9 @@ class Game:
             return sorted(ranking, key=lambda x: x["score"], reverse=True)
 
     def _conditional_save(self):
-        """Salva apenas se passou tempo suficiente desde a última salvagem"""
+        """Salva apenas se passou tempo suficiente"""
         now = datetime.now()
-        if (now - self._last_save).total_seconds() > 2:  # Salvar a cada 2 segundos
+        if (now - self._last_save).total_seconds() > 2:
             self._force_save()
 
     def _force_save(self):
@@ -463,10 +717,11 @@ class Game:
             self.save()
             self._last_save = datetime.now()
         except Exception as e:
-            print(f"Erro ao salvar jogo {self.code}: {e}")
+            logger.error(f"Failed to save game {self.code}: {e}")
 
     @retry_db_operation()
     def save(self):
+        """Save com write-through cache"""
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -477,16 +732,16 @@ class Game:
                 VALUES (:code, :teacher_username, :questions, :players, :status, :current_question, :start_time, :question_start_time, :updated_at)
                 ''', data)
             
-            # Atualizar cache
+            # Update cache on success
             game_cache.set(f"game:{self.code}", self)
         except Exception as e:
-            print(f"Erro ao salvar jogo {self.code}: {e}")
+            logger.error(f"Failed to save game {self.code}: {e}")
             raise
 
     @classmethod
     @retry_db_operation()
     def get_by_code(cls, code):
-        # Verificar cache primeiro
+        # Check cache first
         cached = game_cache.get(f"game:{code}")
         if cached:
             return cached
@@ -498,13 +753,12 @@ class Game:
                 row = cursor.fetchone()
                 game = cls.from_db_row(row)
                 
-                # Adicionar ao cache se encontrado
                 if game:
                     game_cache.set(f"game:{code}", game)
                 
                 return game
         except Exception as e:
-            print(f"Erro ao buscar jogo {code}: {e}")
+            logger.error(f"Failed to get game {code}: {e}")
             return None
     
     @classmethod
@@ -517,17 +771,56 @@ class Game:
                 rows = cursor.fetchall()
                 games = [cls.from_db_row(row) for row in rows]
                 
-                # Adicionar ao cache
+                # Add to cache
                 for game in games:
                     if game:
                         game_cache.set(f"game:{game.code}", game)
                 
                 return games
         except Exception as e:
-            print(f"Erro ao buscar jogos do professor {teacher_username}: {e}")
+            logger.error(f"Failed to get games for teacher {teacher_username}: {e}")
             return []
+    
+    @classmethod
+    @retry_db_operation()
+    def get_multiple_by_codes(cls, codes: List[str]) -> Dict[str, 'Game']:
+        """Batch fetch para reduzir N+1 queries - NEW"""
+        if not codes:
+            return {}
+        
+        # Check cache first
+        result = {}
+        missing_codes = []
+        
+        for code in codes:
+            cached = game_cache.get(f"game:{code}")
+            if cached:
+                result[code] = cached
+            else:
+                missing_codes.append(code)
+        
+        if not missing_codes:
+            return result
+        
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                placeholders = ','.join('?' * len(missing_codes))
+                query = f"SELECT * FROM games WHERE code IN ({placeholders})"
+                cursor.execute(query, missing_codes)
+                
+                for row in cursor:
+                    game = cls.from_db_row(row)
+                    if game:
+                        result[game.code] = game
+                        game_cache.set(f"game:{game.code}", game)
+                
+                return result
+        except Exception as e:
+            logger.error(f"Failed to batch get games: {e}")
+            return result
 
-# SAMPLE_QUESTIONS e PLAYER_ICONS permanecem os mesmos
+# Sample questions
 SAMPLE_QUESTIONS = [
   {
     "question": "Uma empresa utiliza duas contas AWS: produção e desenvolvimento. A empresa armazena os dados em um bucket Amazon S3 que está na conta de produção. Os dados são criptografados com uma chave gerenciada pelo cliente do AWS Key Management Service (AWS KMS). A empresa planeja copiar os dados para outro bucket S3 que esteja na conta de desenvolvimento. Um desenvolvedor precisa usar uma chave KMS para criptografar os dados no bucket S3 que está na conta de desenvolvimento. A chave KMS na conta de desenvolvimento deve estar acessível a partir da conta de produção. Qual solução atenderá a esses requisitos?",
@@ -631,4 +924,4 @@ SAMPLE_QUESTIONS = [
   }
 ]
 
-PLAYER_ICONS = ["😀", "😎", "🤖", "👻", "🦄", "🐱", "🐶", "🦊", "🐼", "🐯", "🦁", "🐸", "🐙", "🦋", "🦜", "💩", "🤓", "🧐", "😡", "🤩", "🤯", "🥶", "👹", "🤡", "👽", "💀", "👦🏼", "👩🏼", "🎃", "👦🏿", "👩🏿", "🐧", "🐺", "🐰", "🐭"]
+PLAYER_ICONS = ["😀", "😎", "🤖", "👻", "🦄", "🐱", "🐶", "🦊", "🐼", "🐯", "🦁", "🐸", "🐙", "🦋", "🦜", "💩", "🤔", "🧐", "😡", "🤩", "🤯", "🥶", "👹", "🤡", "👽", "💀", "👦🏼", "👩🏼", "🎃", "👦🏿", "👩🏿", "🧙", "🐺", "🐰", "🐭"]

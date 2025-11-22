@@ -1,69 +1,141 @@
-# aluno.py
+# aluno.py - FIXED VERSION
 import streamlit as st
 import time
-from core import Game, PLAYER_ICONS 
+from core import Game, PLAYER_ICONS, game_cache
 from streamlit.components.v1 import html
 import os
 import uuid
 from datetime import datetime
 import threading
+import logging
 
-# Gerenciador de estado de sessão resiliente
-class SessionManager:
+logger = logging.getLogger(__name__)
+
+# ==================== UNIFIED SESSION MANAGER ====================
+class UnifiedSessionManager:
+    """Gerenciador único de sessão - FIXED: sincroniza com st.session_state"""
+    
     def __init__(self):
         self._lock = threading.RLock()
-        self._session_id = None
-        self._last_activity = datetime.now()
+        self.timeout = 1800  # 30 minutos
     
     def get_session_id(self):
+        """Retorna session_id único"""
         with self._lock:
-            if not self._session_id:
-                self._session_id = str(uuid.uuid4())
-            return self._session_id
+            if 'session_id' not in st.session_state:
+                st.session_state.session_id = str(uuid.uuid4())
+            return st.session_state.session_id
     
     def update_activity(self):
+        """Atualiza timestamp de atividade"""
         with self._lock:
-            self._last_activity = datetime.now()
+            st.session_state.last_activity = time.time()
     
-    def is_session_valid(self):
+    def is_session_valid(self) -> bool:
+        """Valida se sessão ainda é válida"""
         with self._lock:
-            # Sessão válida por 30 minutos de inatividade
-            return (datetime.now() - self._last_activity).total_seconds() < 1800
+            last_activity = st.session_state.get('last_activity', 0)
+            return (time.time() - last_activity) < self.timeout
+    
+    def validate_and_refresh(self) -> bool:
+        """Valida sessão e atualiza timestamp atomicamente - NEW"""
+        with self._lock:
+            if not self.is_session_valid():
+                self.clear()
+                return False
+            self.update_activity()
+            return True
+    
+    def clear(self):
+        """Limpa dados da sessão"""
+        with self._lock:
+            keys_to_clear = [
+                'session_id', 'username', 'game_code', 'user_type',
+                'selected_icon', 'answer_time', 'show_ranking',
+                'last_activity', 'input_game_code', 'input_nickname'
+            ]
+            for key in keys_to_clear:
+                if key in st.session_state:
+                    del st.session_state[key]
 
-# Instância global do gerenciador de sessão
-session_manager = SessionManager()
+# Instância global do session manager
+session_manager = UnifiedSessionManager()
+
+# ==================== DEBOUNCED BUTTON ====================
+class DebouncedButton:
+    """Previne double-clicks com cooldown - NEW"""
+    
+    def __init__(self, cooldown: float = 1.5):
+        self.last_click = {}
+        self.cooldown = cooldown
+        self._lock = threading.RLock()
+    
+    def is_allowed(self, button_id: str) -> bool:
+        """Verifica se botão pode ser clicado"""
+        with self._lock:
+            now = time.time()
+            last = self.last_click.get(button_id, 0)
+            
+            if now - last >= self.cooldown:
+                self.last_click[button_id] = now
+                return True
+            
+            logger.warning(f"Debounced button click: {button_id}")
+            return False
+    
+    def reset(self, button_id: str):
+        """Reset cooldown para botão específico"""
+        with self._lock:
+            self.last_click.pop(button_id, None)
+
+# Instância global de debouncer
+button_debouncer = DebouncedButton(cooldown=1.5)
 
 def navigate_to(page):
+    """Navega para página com tracking de atividade"""
     with st.sidebar:
         st.session_state.page = page
     session_manager.update_activity()
 
-# Decorator para operações resilientes
-def resilient_operation(max_retries=3, base_delay=0.5):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            last_exception = None
-            for attempt in range(max_retries):
-                try:
-                    session_manager.update_activity()
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_exception = e
-                    if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt) + (0.1 * attempt)
-                        time.sleep(delay)
-                        # Forçar refresh dos dados do jogo em erro
-                        if 'game_code' in st.session_state:
-                            game_code = st.session_state.game_code
-                            # Limpar cache para forçar nova leitura
-                            from core import game_cache
-                            game_cache.delete(f"game:{game_code}")
-                    continue
-            # Se chegou aqui, todas as tentativas falharam
-            st.error(f"Erro de conexão. Tentando reconectar... ({str(last_exception)})")
-            return None
-        return wrapper
-    return decorator
+# ==================== RESILIENT OPERATIONS ====================
+def resilient_game_operation(func, max_retries=3):
+    """Wrapper para operações de jogo com retry - FIXED: melhor error handling"""
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            session_manager.update_activity()
+            result = func()
+            
+            # Se resultado é None, considerar como falha soft
+            if result is None and attempt < max_retries - 1:
+                logger.warning(f"Operation returned None, retry {attempt+1}/{max_retries}")
+                time.sleep(0.5 * (2 ** attempt))
+                
+                # Limpar cache para forçar reload
+                if 'game_code' in st.session_state:
+                    game_cache.delete(f"game:{st.session_state.game_code}")
+                continue
+            
+            return result
+            
+        except Exception as e:
+            last_exception = e
+            logger.error(f"Game operation error (attempt {attempt+1}): {e}")
+            
+            if attempt < max_retries - 1:
+                delay = 0.5 * (2 ** attempt)
+                time.sleep(delay)
+                
+                # Limpar cache em erro
+                if 'game_code' in st.session_state:
+                    game_cache.delete(f"game:{st.session_state.game_code}")
+            continue
+    
+    # Todas tentativas falharam
+    if last_exception:
+        st.error(f"Erro de conexão. Por favor, tente novamente.")
+    return None
 
 # Script JavaScript otimizado
 silent_audio_script = """
@@ -79,24 +151,35 @@ silent_audio_script = """
         } catch(e) {}
     }
     
-    // Múltiplos eventos para garantir ativação
     ['click', 'touchstart', 'keydown'].forEach(event => {
         document.addEventListener(event, activateAudio, { once: true, passive: true });
     });
     
-    // Auto-ativação após delay
     setTimeout(activateAudio, 1000);
 })();
 </script>
 """
 
-@resilient_operation()
-def safe_game_lookup(game_code):
-    """Busca segura do jogo com fallback"""
-    try:
-        return Game.get_by_code(game_code.upper())
-    except Exception:
+def get_current_game():
+    """Obtém jogo atual com validação de sessão - FIXED: melhor error handling"""
+    current_game_code = st.session_state.get("game_code")
+    if not current_game_code:
         return None
+    
+    def load_game():
+        return Game.get_by_code(current_game_code)
+    
+    return resilient_game_operation(load_game)
+
+def validate_session():
+    """Valida sessão do usuário - FIXED: usa método unificado"""
+    if not session_manager.validate_and_refresh():
+        # Sessão expirada
+        navigate_to("home")
+        st.error("Sessão expirada. Faça login novamente.")
+        st.rerun()
+        return False
+    return True
 
 def render_student_home():
     html(silent_audio_script, height=0)
@@ -143,16 +226,27 @@ def render_student_home():
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
     
-    if st.button("Entrar", disabled=not can_join, key="join_game_btn"):
+    # Debounce no botão de entrada - NEW
+    button_id = "join_game_btn"
+    
+    if st.button("Entrar", disabled=not can_join, key=button_id):
+        if not button_debouncer.is_allowed(button_id):
+            st.warning("Por favor, aguarde antes de tentar novamente.")
+            return
+        
         if not can_join:
             st.error("Preencha todos os campos antes de entrar.")
             return
         
         with st.spinner("Conectando ao jogo..."):
-            current_game = safe_game_lookup(game_code.upper())
+            def join_operation():
+                return Game.get_by_code(game_code.upper())
+            
+            current_game = resilient_game_operation(join_operation)
             
             if not current_game:
                 st.error("Código de jogo inválido ou servidor temporariamente indisponível. Tente novamente.")
+                button_debouncer.reset(button_id)
                 return
                 
             if current_game.status == "waiting":
@@ -164,8 +258,8 @@ def render_student_home():
                         st.session_state.username = nickname
                         st.session_state.game_code = game_code.upper()
                         st.session_state.user_type = "student"
-                        st.session_state.session_id = session_manager.get_session_id()
-                        st.session_state.last_heartbeat = time.time()
+                        session_manager.get_session_id()
+                        session_manager.update_activity()
                         
                         # Limpar inputs
                         st.session_state.input_game_code = ""
@@ -175,50 +269,23 @@ def render_student_home():
                         st.rerun()
                     else:
                         st.error("Este apelido já está sendo usado. Escolha outro.")
+                        button_debouncer.reset(button_id)
+                        
                 except Exception as e:
+                    logger.error(f"Error joining game: {e}")
                     st.error("Erro ao entrar no jogo. Tente novamente em alguns segundos.")
+                    button_debouncer.reset(button_id)
                     
             elif current_game.status == "active":
                 st.error("O jogo já começou e não aceita mais jogadores.")
+                button_debouncer.reset(button_id)
             else: 
                 st.error("Este jogo já foi finalizado.")
-
-@resilient_operation()
-def get_current_game():
-    """Obtém o jogo atual com validação de sessão"""
-    current_game_code = st.session_state.get("game_code")
-    if not current_game_code:
-        return None
-    return Game.get_by_code(current_game_code)
-
-def validate_session():
-    """Valida se a sessão do usuário ainda é válida"""
-    if not session_manager.is_session_valid():
-        # Sessão expirada, limpar e redirecionar
-        for key in list(st.session_state.keys()):
-            if key.startswith(('game_', 'user', 'selected_', 'answer_')):
-                del st.session_state[key]
-        navigate_to("home")
-        st.error("Sessão expirada. Faça login novamente.")
-        st.rerun()
-        return False
-    return True
-
-def heartbeat():
-    """Atualiza o heartbeat da sessão"""
-    current_time = time.time()
-    last_heartbeat = st.session_state.get("last_heartbeat", 0)
-    
-    # Atualizar heartbeat a cada 30 segundos
-    if current_time - last_heartbeat > 30:
-        st.session_state.last_heartbeat = current_time
-        session_manager.update_activity()
+                button_debouncer.reset(button_id)
 
 def render_waiting_room():
     if not validate_session():
         return
-        
-    heartbeat()
     
     current_game = get_current_game()
     if not current_game:
@@ -242,7 +309,7 @@ def render_waiting_room():
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.header(f"🔑Código: {current_game.code}")
+        st.header(f"🔒Código: {current_game.code}")
         st.write("🕢 Aguarde o professor iniciar o jogo...")
         
         # Status de conexão
@@ -257,7 +324,6 @@ def render_waiting_room():
                 st.info("Nenhum jogador entrou ainda.")
             else:
                 player_cols = st.columns(3)
-                # Usar lista para evitar problemas de concorrência
                 players_list = list(current_game.players.items())
                 for i, (player_name, player_data) in enumerate(players_list):
                     with player_cols[i % 3]:
@@ -269,15 +335,13 @@ def render_waiting_room():
                             unsafe_allow_html=True
                         )
 
-    # Auto-refresh com intervalo maior para reduzir carga
+    # Auto-refresh com intervalo maior
     time.sleep(3)
     st.rerun()
 
 def render_game():
     if not validate_session():
         return
-        
-    heartbeat()
     
     current_game = get_current_game()
     if not current_game:
@@ -355,6 +419,7 @@ def render_game():
                 
                 st.session_state.show_ranking = False
         except Exception as e:
+            logger.error(f"Error loading ranking: {e}")
             st.error("Erro ao carregar ranking. Recarregando...")
             st.session_state.show_ranking = False
         
@@ -395,7 +460,9 @@ def render_game():
 
         current_options = current_game.questions[current_q_idx_game]['options']
         
-        for i_opt, option in enumerate(current_options): 
+        for i_opt, option in enumerate(current_options):
+            button_id = f"option_{i_opt}_{current_q_idx_game}_{player_name_session}"
+            
             with option_cols[i_opt % 2]:
                 if st.button(
                     option, 
@@ -403,7 +470,14 @@ def render_game():
                     help="Clique para selecionar esta resposta",
                     use_container_width=True,
                     type="primary"
-                ): 
+                ):
+                    # Debounce check - NOVO
+                    if not button_debouncer.is_allowed(button_id):
+                        st.warning("Por favor, aguarde antes de responder novamente.")
+                        time.sleep(1)
+                        st.rerun()
+                        return
+                    
                     # Processar resposta
                     with st.spinner("Registrando sua resposta..."): 
                         try:
@@ -429,8 +503,12 @@ def render_game():
                                 time.sleep(2)
                             else:
                                 st.warning("Erro ao registrar resposta. Tente novamente.")
+                                button_debouncer.reset(button_id)
+                                
                         except Exception as e:
+                            logger.error(f"Error recording answer: {e}")
                             st.error("Problema de conexão. Sua resposta pode não ter sido registrada.")
+                            button_debouncer.reset(button_id)
                         
                     st.rerun()
 
@@ -491,7 +569,7 @@ def render_game_results():
             None
         )
 
-        # CSS para resultados (mantido igual ao original)
+        # CSS para resultados
         st.markdown("""
         <style> 
         audio { display: none; }
@@ -543,7 +621,7 @@ def render_game_results():
         # Renderizar pódio
         if len(ranking) > 0:
             podium_html = "<div class='podium-container'>"
-            ordered_ranking_podium = [None, None, None]  # [second, first, third]
+            ordered_ranking_podium = [None, None, None]
 
             if len(ranking) >= 1: 
                 ordered_ranking_podium[1] = {'player': ranking[0], 'class': 'first-place'}
@@ -552,7 +630,6 @@ def render_game_results():
             if len(ranking) >= 3: 
                 ordered_ranking_podium[2] = {'player': ranking[2], 'class': 'third-place'}
             
-            # HTML do pódio
             for podium_entry in ordered_ranking_podium:
                 if podium_entry:
                     player_info = podium_entry['player']
@@ -609,6 +686,7 @@ def render_game_results():
         st.markdown(table_html_ranking, unsafe_allow_html=True)
 
     except Exception as e:
+        logger.error(f"Error loading results: {e}")
         st.error("Erro ao carregar resultados. Atualizando...")
         time.sleep(2)
         st.rerun()
@@ -622,19 +700,7 @@ def render_game_results():
         with student_button_cols[1]:
             if st.button("Voltar ao Início", key="back_to_home_results", use_container_width=True):
                 # Limpar estados de sessão relacionados ao jogo/aluno
-                keys_to_clear_student_results = [
-                    "balloons_shown", "selected_icon", "answer_time", 
-                    "game_code", "username", "user_type", "show_ranking", 
-                    "selected_answer", "join_game_code", "join_nickname",
-                    "session_id", "last_heartbeat", "input_game_code", "input_nickname"
-                ]
-                for k_clear_stud in keys_to_clear_student_results:
-                    if k_clear_stud in st.session_state: 
-                        del st.session_state[k_clear_stud]
-                
-                # Reset do session manager
-                session_manager._session_id = None
-                
+                session_manager.clear()
                 navigate_to("home")
                 st.rerun()
     
