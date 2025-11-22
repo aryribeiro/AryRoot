@@ -1,12 +1,22 @@
-# app.py
+# app.py - FIXED VERSION
 import streamlit as st
-from core import setup_data_directory
+from core import setup_data_directory, db_circuit_breaker
 from professor import render_teacher_login, render_teacher_dashboard, render_teacher_game_control, render_teacher_signup, render_upload_questions_json_page 
 from aluno import render_student_home, render_waiting_room, render_game, render_game_results
 from dotenv import load_dotenv
 import time
 import threading
 from datetime import datetime
+import random
+import logging
+from typing import Dict, Any
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -19,37 +29,103 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Sistema de Health Check
-class HealthCheck:
+# ==================== ADVANCED HEALTH CHECK ====================
+class AdvancedHealthCheck:
+    """Health check com métricas detalhadas - FIXED: integração com circuit breaker"""
+    
     def __init__(self):
         self._lock = threading.RLock()
         self._last_check = datetime.now()
         self._system_status = "healthy"
+        self.metrics = {
+            'db_latency_ms': [],
+            'cache_hit_rate': 0.0,
+            'active_connections': 0,
+            'circuit_breaker_state': 'CLOSED',
+            'total_requests': 0,
+            'failed_requests': 0
+        }
+        self._max_latency_samples = 100
     
-    def get_status(self):
+    def get_status(self) -> str:
+        """Retorna status do sistema"""
         with self._lock:
-            # Verificar status do sistema a cada 60 segundos
             now = datetime.now()
             if (now - self._last_check).total_seconds() > 60:
                 self._check_system_health()
                 self._last_check = now
             return self._system_status
     
+    def get_detailed_status(self) -> Dict[str, Any]:
+        """Status detalhado para debugging"""
+        with self._lock:
+            avg_latency = sum(self.metrics['db_latency_ms']) / len(self.metrics['db_latency_ms']) if self.metrics['db_latency_ms'] else 0
+            error_rate = (self.metrics['failed_requests'] / self.metrics['total_requests'] * 100) if self.metrics['total_requests'] > 0 else 0
+            
+            return {
+                'status': self._system_status,
+                'metrics': {
+                    'avg_db_latency_ms': round(avg_latency, 2),
+                    'cache_hit_rate': self.metrics['cache_hit_rate'],
+                    'circuit_breaker_state': self.metrics['circuit_breaker_state'],
+                    'error_rate_percent': round(error_rate, 2),
+                    'total_requests': self.metrics['total_requests']
+                },
+                'timestamp': datetime.now().isoformat()
+            }
+    
     def _check_system_health(self):
+        """Verifica saúde do sistema"""
         try:
-            # Teste básico de conectividade com o banco
             from core import get_db_connection
+            
+            start_time = time.time()
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1")
-            self._system_status = "healthy"
-        except Exception:
-            self._system_status = "degraded"
+                cursor.fetchone()
+            
+            # Registrar latência
+            latency_ms = (time.time() - start_time) * 1000
+            self._record_latency(latency_ms)
+            
+            # Atualizar estado do circuit breaker
+            self.metrics['circuit_breaker_state'] = db_circuit_breaker.state.value
+            
+            # Determinar status baseado em métricas
+            if db_circuit_breaker.state.value == 'OPEN':
+                self._system_status = "degraded"
+            elif latency_ms > 200:  # Latência alta
+                self._system_status = "degraded"
+            else:
+                self._system_status = "healthy"
+                
+            logger.info(f"Health check: {self._system_status} (latency: {latency_ms:.2f}ms)")
+            
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            self._system_status = "unhealthy"
+            self.metrics['circuit_breaker_state'] = 'OPEN'
+    
+    def _record_latency(self, latency_ms: float):
+        """Registra amostra de latência"""
+        with self._lock:
+            self.metrics['db_latency_ms'].append(latency_ms)
+            # Manter apenas últimas N amostras
+            if len(self.metrics['db_latency_ms']) > self._max_latency_samples:
+                self.metrics['db_latency_ms'].pop(0)
+    
+    def record_request(self, success: bool = True):
+        """Registra requisição para métricas"""
+        with self._lock:
+            self.metrics['total_requests'] += 1
+            if not success:
+                self.metrics['failed_requests'] += 1
 
 # Instância global do health check
-health_check = HealthCheck()
+health_check = AdvancedHealthCheck()
 
-# CSS otimizado com melhor performance
+# ==================== CSS OTIMIZADO ====================
 st.markdown("""
 <style>
     .main {
@@ -102,7 +178,7 @@ st.markdown("""
     .status-degraded {
         background-color: #FF9800;
     }
-    .status-error {
+    .status-unhealthy {
         background-color: #F44336;
     }
     .question-number {
@@ -213,7 +289,6 @@ st.markdown("""
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
-    /* Esconder elementos do Streamlit */
     header {display: none !important;}
     footer {display: none !important;}
     #MainMenu {display: none !important;}
@@ -226,24 +301,29 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Inicializar o banco de dados SQLite com retry
-def initialize_database():
-    max_retries = 3
+# ==================== INICIALIZAÇÃO ====================
+def initialize_database_with_retry(max_retries: int = 3) -> bool:
+    """Inicializar banco com retry e backoff - FIXED"""
     for attempt in range(max_retries):
         try:
             setup_data_directory()
+            logger.info("Database initialized successfully")
             return True
         except Exception as e:
+            logger.error(f"Database init failed (attempt {attempt+1}/{max_retries}): {e}")
+            
             if attempt < max_retries - 1:
-                time.sleep(1 * (attempt + 1))  # Backoff progressivo
+                delay = 1 * (2 ** attempt) + random.uniform(0, 0.5)
+                time.sleep(delay)
                 continue
             else:
-                st.error(f"Erro ao inicializar banco de dados: {e}")
+                logger.critical("Failed to initialize database after all retries")
                 return False
+    
+    return False
 
-# Função para inicializar sessão com validação
 def init_session_state():
-    # Inicializar estado base
+    """Inicializar estado de sessão com validação - FIXED"""
     defaults = {
         "page": "home",
         "user_type": None,
@@ -263,12 +343,8 @@ def init_session_state():
         if key not in st.session_state:
             st.session_state[key] = default_value
 
-# Monitoramento de atividade
-def track_activity():
-    st.session_state.last_activity = time.time()
-
-# Função para mostrar status do sistema
 def show_system_status():
+    """Mostra status do sistema no canto superior direito"""
     status = health_check.get_status()
     status_class = f"connection-status status-{status}"
     
@@ -284,9 +360,59 @@ def show_system_status():
         unsafe_allow_html=True
     )
 
-# Página Inicial otimizada
+# ==================== SESSION VALIDATION ====================
+def validate_session_timeout():
+    """Valida timeout de sessão - FIXED: com unified check"""
+    current_time = time.time()
+    last_activity = st.session_state.get('last_activity', current_time)
+    timeout = 1800  # 30 minutos
+    
+    if current_time - last_activity > timeout:
+        logger.info("Session expired due to inactivity")
+        # Limpar sessão expirada
+        keys_to_clear = [key for key in st.session_state.keys() 
+                        if key not in ['session_initialized']]
+        for key in keys_to_clear:
+            del st.session_state[key]
+        
+        st.session_state.page = "home"
+        st.warning("Sessão expirada. Faça login novamente.")
+        return False
+    
+    return True
+
+def validate_page_access(page: str) -> bool:
+    """Valida acesso à página baseado em autenticação"""
+    protected_pages = {
+        "waiting_room": ["student"],
+        "game": ["student"],
+        "teacher_dashboard": ["teacher"],
+        "teacher_game_control": ["teacher"],
+        "teacher_signup": ["teacher"],  # Admin pode acessar
+        "teacher_upload_json": ["teacher"],
+        "game_results": ["student", "teacher"]
+    }
+    
+    if page not in protected_pages:
+        return True
+    
+    user_type = st.session_state.get("user_type")
+    username = st.session_state.get("username")
+    
+    # Permitir acesso se tipo de usuário correto
+    if user_type in protected_pages[page]:
+        return True
+    
+    # Admin tem acesso especial
+    if username == "professor" and user_type == "teacher":
+        return True
+    
+    return False
+
+# ==================== PÁGINAS ====================
 def render_home():
-    track_activity()
+    """Página inicial otimizada"""
+    st.session_state.last_activity = time.time()
     show_system_status()
     
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -313,38 +439,45 @@ def render_home():
         with tab2:
             render_teacher_login()
 
-# Função principal com error handling
+# ==================== MAIN ====================
 def main():
+    """Função principal com error handling robusto - FIXED"""
     try:
         # Inicializar banco de dados
-        if not initialize_database():
+        if not initialize_database_with_retry():
             st.error("Sistema temporariamente indisponível. Tente novamente em alguns minutos.")
+            st.markdown(
+                "<div style='text-align: center; margin-top: 50px;'>"
+                "<div class='loading-spinner'></div>"
+                "<p>Tentando reconectar...</p></div>",
+                unsafe_allow_html=True
+            )
+            time.sleep(5)
+            st.rerun()
             return
         
         # Inicializar estado da sessão
         init_session_state()
         
-        # Verificar timeout de sessão (30 minutos)
-        current_time = time.time()
-        if current_time - st.session_state.last_activity > 1800:  # 30 minutos
-            # Limpar sessão expirada
-            for key in list(st.session_state.keys()):
-                if key not in ['session_initialized']:
-                    del st.session_state[key]
-            st.session_state.page = "home"
-            st.warning("Sessão expirada. Faça login novamente.")
+        # Validar timeout de sessão
+        if not validate_session_timeout():
+            st.rerun()
+            return
+        
+        # Registrar requisição no health check
+        health_check.record_request(success=True)
         
         # Roteamento de páginas
         page = st.session_state.get("page", "home")
         
-        # Verificar se a página requer autenticação
-        protected_pages = ["waiting_room", "game", "teacher_dashboard", "teacher_game_control"]
-        if page in protected_pages:
-            if not st.session_state.get("username") or not st.session_state.get("user_type"):
-                st.warning("Acesso não autorizado. Redirecionando...")
-                st.session_state.page = "home"
-                st.rerun()
-                return
+        # Validar acesso à página
+        if not validate_page_access(page):
+            logger.warning(f"Unauthorized access attempt to page: {page}")
+            st.warning("Acesso não autorizado. Redirecionando...")
+            st.session_state.page = "home"
+            time.sleep(1)
+            st.rerun()
+            return
         
         # Renderizar página com tratamento de erro
         try:
@@ -365,20 +498,23 @@ def main():
             elif page == "teacher_upload_json": 
                 render_upload_questions_json_page()
             else: 
-                # Fallback para página desconhecida
+                logger.warning(f"Unknown page requested: {page}")
                 st.warning("Página não encontrada. Redirecionando para home...")
                 st.session_state.page = "home"
                 time.sleep(1)
                 st.rerun()
         
         except Exception as page_error:
+            logger.error(f"Page rendering error: {page_error}", exc_info=True)
             st.error("Erro temporário na página. Recarregando...")
             
-            # Incrementar contador de problemas de conexão
+            # Incrementar contador de problemas
             st.session_state.connection_issues = st.session_state.get("connection_issues", 0) + 1
+            health_check.record_request(success=False)
             
             # Se muitos erros, redirecionar para home
             if st.session_state.connection_issues > 3:
+                logger.warning("Too many connection issues, redirecting to home")
                 st.session_state.page = "home"
                 st.session_state.connection_issues = 0
                 st.error("Muitos problemas de conexão. Retornando ao início.")
@@ -388,30 +524,45 @@ def main():
             st.rerun()
     
     except Exception as main_error:
+        logger.critical(f"Critical application error: {main_error}", exc_info=True)
+        health_check.record_request(success=False)
         st.error("Sistema temporariamente indisponível. Atualizando página...")
-        # Log do erro para depuração
-        print(f"Erro principal da aplicação: {main_error}")
         time.sleep(3)
         st.rerun()
 
-# Wrapper para execução resiliente
 def resilient_main():
+    """Wrapper para execução resiliente com exponential backoff - FIXED"""
     max_attempts = 3
+    
     for attempt in range(max_attempts):
         try:
             main()
             break  # Sucesso, sair do loop
+            
         except Exception as e:
+            logger.error(f"Main execution error (attempt {attempt+1}/{max_attempts}): {e}")
+            
             if attempt < max_attempts - 1:
+                # Backoff exponencial com jitter
+                delay = 2 * (2 ** attempt) + random.uniform(0, 1)
                 st.error(f"Problema temporário (tentativa {attempt + 1}/{max_attempts}). Recarregando...")
-                time.sleep(2 * (attempt + 1))  # Backoff exponencial
+                
+                st.markdown(
+                    f"<div style='text-align: center; margin-top: 20px;'>"
+                    f"<div class='loading-spinner'></div>"
+                    f"<p>Aguarde {int(delay)} segundos...</p></div>",
+                    unsafe_allow_html=True
+                )
+                
+                time.sleep(delay)
                 st.rerun()
             else:
-                st.error("Sistema temporariamente indisponível. Tente atualizar a página.")
+                # Última tentativa falhou
+                st.error("Sistema temporariamente indisponível. Tente atualizar a pág na manualmente.")
                 st.markdown(
                     "<div style='text-align: center; margin-top: 50px;'>"
                     "<div class='loading-spinner'></div>"
-                    "<p>Tentando reconectar...</p></div>",
+                    "<p>Se o problema persistir, entre em contato com o suporte.</p></div>",
                     unsafe_allow_html=True
                 )
 
