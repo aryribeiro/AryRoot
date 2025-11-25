@@ -860,7 +860,7 @@ SAMPLE_QUESTIONS = [
       "Configure um tubo no Amazon EventBridge Pipes. Conecte a aplicação ao tubo como fonte. Configure o tubo para usar o número de celular de cada usuário como alvo. Configure o pipeline para enviar eventos recebidos aos usuários.",
       "Crie um tópico FIFO do Amazon Simple Notification Service (SNS). Configure o aplicativo para usar o AWS SDK para publicar notificações no tópico da SNS e enviar mensagens SMS aos usuários."
     ],
-    "correct": 1
+    "correct": 3
   },
   {
     "question": "Um desenvolvedor precisa automatizar implantações para uma carga de trabalho serverless e baseada em eventos. O desenvolvedor precisa criar modelos padronizados para definir a infraestrutura e testar a funcionalidade da carga de trabalho localmente antes da implantação. O desenvolvedor já utiliza um pipeline no AWS CodePipeline. O desenvolvedor precisa incorporar quaisquer outras mudanças de infraestrutura no pipeline existente.\n\nQual solução atenderá a esses requisitos?",
