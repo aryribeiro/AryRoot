@@ -365,7 +365,7 @@ def validate_session_timeout():
     """Valida timeout de sessão - FIXED: com unified check"""
     current_time = time.time()
     last_activity = st.session_state.get('last_activity', current_time)
-    timeout = 1800  # 30 minutos
+    timeout = 7200  # 2 horas
     
     if current_time - last_activity > timeout:
         logger.info("Session expired due to inactivity")
