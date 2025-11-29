@@ -17,7 +17,7 @@ class UnifiedSessionManager:
     
     def __init__(self):
         self._lock = threading.RLock()
-        self.timeout = 1800  # 30 minutos
+        self.timeout = 7200  # 2 horas
     
     def get_session_id(self):
         """Retorna session_id único"""
