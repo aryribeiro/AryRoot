@@ -937,7 +937,7 @@ def render_teacher_game_control():
     with st.sidebar:
         render_current_ranking(current_game)
 
-    st.markdown("<h1 class='title' style='font-size:2rem;'>🎮 Controle do Jogo</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='title' style='font-size:2rem; margin-top:-2rem;'>🎮 Controle do Jogo</h1>", unsafe_allow_html=True)
 
     # Botão voltar + Código na mesma linha
     col_back, col_code = st.columns([1, 2])
