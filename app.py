@@ -26,7 +26,7 @@ st.set_page_config(
     page_title="AryRoot | Quiz Game Multiplayer",
     page_icon="🎮",
     layout="wide",
-    initial_sidebar_state="auto"
+    initial_sidebar_state="expanded"
 )
 
 # ==================== ADVANCED HEALTH CHECK ====================
@@ -160,6 +160,7 @@ _GLOBAL_CSS = """<style>
     footer { display: none !important; }
     [data-testid="stHeader"] { background: transparent !important; height: 2.5rem !important; }
     [data-testid="stHeader"] [data-testid="stActionButtonIcon"], [data-testid="stHeader"] a, .stDeployButton, [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] { display: none !important; }
     .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; }
 </style>"""
 
