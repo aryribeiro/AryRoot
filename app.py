@@ -1,7 +1,8 @@
 # app.py - FIXED VERSION
 import streamlit as st
+from streamlit.components.v1 import html
 from core import setup_data_directory, db_circuit_breaker
-from professor import render_teacher_login, render_teacher_dashboard, render_teacher_game_control, render_teacher_signup, render_upload_questions_json_page 
+from professor import render_teacher_login, render_teacher_dashboard, render_teacher_game_control, render_teacher_signup, render_upload_questions_json_page
 from aluno import render_student_home, render_waiting_room, render_game, render_game_results
 from dotenv import load_dotenv
 import time
@@ -167,6 +168,32 @@ _GLOBAL_CSS = """<style>
 </style>"""
 
 st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
+
+# ==================== TRILHA SONORA ====================
+_AUDIO_JS = """
+<script>
+(function() {
+    const doc = window.parent.document;
+    if (doc.getElementById('aryroot-bgm')) return;
+    const audio = doc.createElement('audio');
+    audio.id = 'aryroot-bgm';
+    audio.src = './app/static/som.mp3';
+    audio.loop = true;
+    audio.volume = 0.3;
+    audio.style.display = 'none';
+    doc.body.appendChild(audio);
+    function tryPlay() {
+        audio.play().then(function() {
+            doc.removeEventListener('click', tryPlay);
+            doc.removeEventListener('touchstart', tryPlay);
+        }).catch(function() {});
+    }
+    doc.addEventListener('click', tryPlay);
+    doc.addEventListener('touchstart', tryPlay);
+})();
+</script>
+"""
+html(_AUDIO_JS, height=0)
 
 # ==================== INICIALIZAÇÃO ====================
 _db_initialized = False
