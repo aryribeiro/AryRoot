@@ -341,35 +341,6 @@ def render_student_home():
                               on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
                               type="secondary")
 
-    # Scrollbar vermelha no container de emojis (injetado via JS no parent)
-    html("""
-    <script>
-    (function() {
-        const doc = window.parent.document;
-        if (doc.getElementById('emoji-scrollbar-css')) return;
-        const style = doc.createElement('style');
-        style.id = 'emoji-scrollbar-css';
-        style.textContent = `
-            [data-testid="stVerticalBlockBorderWrapper"] > div:first-child {
-                scrollbar-color: #E21B3C #f0f0f0 !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] > div:first-child::-webkit-scrollbar {
-                width: 8px !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] > div:first-child::-webkit-scrollbar-thumb {
-                background-color: #E21B3C !important;
-                border-radius: 4px !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] > div:first-child::-webkit-scrollbar-track {
-                background: #f0f0f0 !important;
-                border-radius: 4px !important;
-            }
-        `;
-        doc.head.appendChild(style);
-    })();
-    </script>
-    """, height=0)
-
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
 

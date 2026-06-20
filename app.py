@@ -165,35 +165,62 @@ _GLOBAL_CSS = """<style>
     [data-testid="stSidebar"] { min-width: 280px !important; width: 280px !important; transform: none !important; }
     [data-testid="stSidebar"][aria-expanded="false"] { transform: none !important; margin-left: 0 !important; width: 280px !important; min-width: 280px !important; }
     .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; }
+    .stApp { padding-top: 0 !important; }
+    .stApp > header + div { padding-top: 0 !important; }
 </style>"""
 
 st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
 
-# ==================== TRILHA SONORA ====================
-_AUDIO_JS = """
+# ==================== TRILHA SONORA + TEMA ====================
+_GLOBAL_JS = """
 <script>
 (function() {
     const doc = window.parent.document;
-    if (doc.getElementById('aryroot-bgm')) return;
-    const audio = doc.createElement('audio');
-    audio.id = 'aryroot-bgm';
-    audio.src = './app/static/som.mp3';
-    audio.loop = true;
-    audio.volume = 0.3;
-    audio.style.display = 'none';
-    doc.body.appendChild(audio);
-    function tryPlay() {
-        audio.play().then(function() {
-            doc.removeEventListener('click', tryPlay);
-            doc.removeEventListener('touchstart', tryPlay);
-        }).catch(function() {});
+
+    // Meta theme-color roxo (barra status mobile)
+    if (!doc.getElementById('aryroot-theme-color')) {
+        const meta = doc.createElement('meta');
+        meta.id = 'aryroot-theme-color';
+        meta.name = 'theme-color';
+        meta.content = '#46178F';
+        doc.head.appendChild(meta);
     }
-    doc.addEventListener('click', tryPlay);
-    doc.addEventListener('touchstart', tryPlay);
+
+    // Scrollbar roxa global
+    if (!doc.getElementById('aryroot-scrollbar-css')) {
+        const style = doc.createElement('style');
+        style.id = 'aryroot-scrollbar-css';
+        style.textContent = `
+            * { scrollbar-color: #46178F #f0f0f0 !important; scrollbar-width: thin !important; }
+            *::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
+            *::-webkit-scrollbar-thumb { background-color: #46178F !important; border-radius: 4px !important; }
+            *::-webkit-scrollbar-track { background: #f0f0f0 !important; border-radius: 4px !important; }
+        `;
+        doc.head.appendChild(style);
+    }
+
+    // Trilha sonora
+    if (!doc.getElementById('aryroot-bgm')) {
+        const audio = doc.createElement('audio');
+        audio.id = 'aryroot-bgm';
+        audio.src = './app/static/som.mp3';
+        audio.loop = true;
+        audio.volume = 0.3;
+        audio.style.display = 'none';
+        doc.body.appendChild(audio);
+        function tryPlay() {
+            audio.play().then(function() {
+                doc.removeEventListener('click', tryPlay);
+                doc.removeEventListener('touchstart', tryPlay);
+            }).catch(function() {});
+        }
+        doc.addEventListener('click', tryPlay);
+        doc.addEventListener('touchstart', tryPlay);
+    }
 })();
 </script>
 """
-html(_AUDIO_JS, height=0)
+html(_GLOBAL_JS, height=0)
 
 # ==================== INICIALIZAÇÃO ====================
 _db_initialized = False
