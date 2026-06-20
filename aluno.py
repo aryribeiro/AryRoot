@@ -302,24 +302,46 @@ def render_student_home():
     st.session_state.input_game_code = game_code
     st.session_state.input_nickname = nickname
 
-    st.markdown("<p style='text-align: center; font-size: 24px; margin-bottom: 0px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 20px; margin-bottom: 0px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
 
     selected_icon_value = st.session_state.get("selected_icon", None)
     st.markdown(
-        f"<p style='text-align:center; font-size:2.5rem; margin:4px 0;'>"
+        f"<p style='text-align:center; font-size:2.8rem; margin:4px 0;'>"
         f"{selected_icon_value if selected_icon_value else '❓'}</p>",
         unsafe_allow_html=True
     )
 
-    # Emojis em container com scroll horizontal
-    emoji_container = st.container(height=120)
+    # CSS override para botões de emoji (sem fundo verde)
+    st.markdown("""<style>
+    [data-testid="stVerticalBlockBorderWrapper"] .stButton > button {
+        background-color: transparent !important;
+        border: 1px solid #ddd !important;
+        border-radius: 8px !important;
+        padding: 4px !important;
+        font-size: 1.8rem !important;
+        min-height: 44px !important;
+        box-shadow: none !important;
+        color: inherit !important;
+        transition: transform 0.15s ease !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] .stButton > button:hover {
+        background-color: #f0f0f0 !important;
+        transform: scale(1.15) !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    }
+    </style>""", unsafe_allow_html=True)
+
+    # Emojis em grid com scroll vertical compacto
+    emoji_container = st.container(height=150)
     with emoji_container:
-        icon_cols = st.columns(10)
-        for i, icon in enumerate(PLAYER_ICONS):
-            with icon_cols[i % 10]:
-                if st.button(icon, key=f"icon_{i}"):
-                    st.session_state.selected_icon = icon
-                    st.rerun()
+        num_cols = 8
+        rows = [PLAYER_ICONS[i:i+num_cols] for i in range(0, len(PLAYER_ICONS), num_cols)]
+        for row in rows:
+            cols = st.columns(num_cols)
+            for idx, icon in enumerate(row):
+                with cols[idx]:
+                    global_idx = PLAYER_ICONS.index(icon)
+                    st.button(icon, key=f"icon_{global_idx}", on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}))
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)

@@ -158,7 +158,6 @@ _GLOBAL_CSS = """<style>
     footer { display: none !important; }
     #MainMenu { display: none !important; }
     .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; }
-    [data-testid="stVerticalBlock"] [data-testid="stButton"] button[key^="icon_"] { font-size: 2rem !important; padding: 6px !important; min-height: 48px !important; }
 </style>"""
 
 st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
