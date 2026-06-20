@@ -325,25 +325,6 @@ def render_student_home():
         background-color: #e8f4fd !important;
         transform: scale(1.1);
     }
-    [data-testid="stVerticalBlockBorderWrapper"],
-    [data-testid="stVerticalBlockBorderWrapper"] *,
-    [data-testid="stVerticalBlockBorderWrapper"] div[style*="overflow"] {
-        scrollbar-color: #E21B3C #f0f0f0 !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar,
-    [data-testid="stVerticalBlockBorderWrapper"] *::-webkit-scrollbar {
-        width: 8px !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar-thumb,
-    [data-testid="stVerticalBlockBorderWrapper"] *::-webkit-scrollbar-thumb {
-        background-color: #E21B3C !important;
-        border-radius: 4px !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar-track,
-    [data-testid="stVerticalBlockBorderWrapper"] *::-webkit-scrollbar-track {
-        background: #f0f0f0 !important;
-        border-radius: 4px !important;
-    }
     </style>""", unsafe_allow_html=True)
 
     # Emojis em grid 5 colunas com scroll vertical
@@ -359,6 +340,35 @@ def render_student_home():
                     st.button(icon, key=f"icon_{global_idx}",
                               on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
                               type="secondary")
+
+    # Scrollbar vermelha no container de emojis (injetado via JS no parent)
+    html("""
+    <script>
+    (function() {
+        const doc = window.parent.document;
+        if (doc.getElementById('emoji-scrollbar-css')) return;
+        const style = doc.createElement('style');
+        style.id = 'emoji-scrollbar-css';
+        style.textContent = `
+            [data-testid="stVerticalBlockBorderWrapper"] > div:first-child {
+                scrollbar-color: #E21B3C #f0f0f0 !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] > div:first-child::-webkit-scrollbar {
+                width: 8px !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] > div:first-child::-webkit-scrollbar-thumb {
+                background-color: #E21B3C !important;
+                border-radius: 4px !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] > div:first-child::-webkit-scrollbar-track {
+                background: #f0f0f0 !important;
+                border-radius: 4px !important;
+            }
+        `;
+        doc.head.appendChild(style);
+    })();
+    </script>
+    """, height=0)
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
