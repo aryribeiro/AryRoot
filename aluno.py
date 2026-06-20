@@ -1,6 +1,7 @@
 # aluno.py - FIXED VERSION
 import streamlit as st
 import time
+from datetime import datetime
 from core import Game, PLAYER_ICONS, game_cache
 from streamlit.components.v1 import html
 import os
@@ -578,13 +579,24 @@ def render_game():
     st.markdown(f"<div class='question-text'>{question_text}</div>", unsafe_allow_html=True)
     
     if not already_answered:
-        # Inicializar timer de resposta
-        if st.session_state.get("answer_time") is None:
-            st.session_state.answer_time = time.time()
-
-        # Timer em JavaScript real (countdown ao vivo)
+        # Timer baseado no servidor (question_start_time do professor)
         game_time_limit = current_game.time_limit
-        elapsed_ms = int((time.time() - st.session_state.answer_time) * 1000)
+        server_elapsed = 0.0
+        if current_game.question_start_time:
+            try:
+                q_start = datetime.fromisoformat(current_game.question_start_time)
+                server_elapsed = (datetime.now() - q_start).total_seconds()
+            except (ValueError, TypeError):
+                pass
+
+        # Se tempo do servidor já expirou, bloquear resposta
+        if server_elapsed >= game_time_limit:
+            st.warning("⏱ Tempo esgotado! Você não pode mais responder esta pergunta.")
+            time.sleep(2)
+            st.rerun()
+            return
+
+        elapsed_ms = int(server_elapsed * 1000)
         limit_ms = game_time_limit * 1000
         timer_js = f"""
         <div id="kahoot-timer" style="text-align:center;margin-bottom:10px;">
@@ -727,11 +739,8 @@ def render_game():
 
             with st.spinner("Registrando sua resposta..."):
                 try:
-                    time_taken = time.time() - st.session_state.answer_time
-                    st.session_state.answer_time = None
-
                     is_correct, points, streak = current_game.record_answer(
-                        player_name_session, clicked_option, time_taken
+                        player_name_session, clicked_option
                     )
 
                     if is_correct is None:

@@ -635,8 +635,17 @@ class Game:
                 logger.info(f"Game finished: {self.code}")
                 return False
 
-    def record_answer(self, player_name, answer_index, time_taken):
-        """Record answer com scoring estilo Kahoot (streak bonus + time-based)"""
+    def record_answer(self, player_name, answer_index, time_taken=None):
+        """Record answer com scoring estilo Kahoot (streak bonus + time-based).
+        time_taken é calculado pelo servidor via question_start_time."""
+        if self.question_start_time:
+            try:
+                q_start = datetime.fromisoformat(self.question_start_time)
+                time_taken = (datetime.now() - q_start).total_seconds()
+            except (ValueError, TypeError):
+                pass
+        if time_taken is None:
+            time_taken = 9999
         operation_id = f"answer:{self.code}:{player_name}:{self.current_question}"
 
         # Check deduplication (previne double-click)
