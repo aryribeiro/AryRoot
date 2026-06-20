@@ -206,105 +206,182 @@ def validate_session():
         return False
     return True
 
+def _try_rejoin_from_query_params():
+    """Tenta reconectar aluno a partida em andamento via query params"""
+    params = st.query_params
+    qp_code = params.get("gc")
+    qp_nick = params.get("pn")
+
+    if not qp_code or not qp_nick:
+        return False
+
+    # Já está na sessão correta
+    if (st.session_state.get("game_code") == qp_code and
+            st.session_state.get("username") == qp_nick and
+            st.session_state.get("page") in ("waiting_room", "game", "game_results")):
+        return True
+
+    game = Game.get_by_code(qp_code)
+    if not game:
+        return False
+
+    if game.status == "finished":
+        # Permitir ver resultados
+        if qp_nick in game.players:
+            st.session_state.username = qp_nick
+            st.session_state.game_code = qp_code
+            st.session_state.user_type = "student"
+            session_manager.get_session_id()
+            session_manager.update_activity()
+            navigate_to("game_results")
+            st.rerun()
+            return True
+        return False
+
+    if game.status not in ("waiting", "active"):
+        return False
+
+    # Jogador existe na partida?
+    if qp_nick in game.players:
+        st.session_state.username = qp_nick
+        st.session_state.game_code = qp_code
+        st.session_state.user_type = "student"
+        session_manager.get_session_id()
+        session_manager.update_activity()
+
+        if game.status == "waiting":
+            navigate_to("waiting_room")
+        else:
+            navigate_to("game")
+        st.rerun()
+        return True
+
+    return False
+
+
+def _set_rejoin_query_params(game_code: str, nickname: str):
+    """Persiste dados de rejoin nos query params do navegador"""
+    st.query_params["gc"] = game_code
+    st.query_params["pn"] = nickname
+
+
 def render_student_home():
     html(silent_audio_script, height=0)
+
+    # Tentar reconectar automaticamente via query params (após F5/reload)
+    if _try_rejoin_from_query_params():
+        return
+
     st.markdown("<p style='text-align: center; font-size: 24px; margin-bottom: 0px;'>🚀Entrar no Jogo</p>", unsafe_allow_html=True)
-    
+
     # Estado persistente dos inputs
     if 'input_game_code' not in st.session_state:
         st.session_state.input_game_code = ""
     if 'input_nickname' not in st.session_state:
         st.session_state.input_nickname = ""
-    
+
     game_code = st.text_input(
-        "Código do jogo", 
+        "Código do jogo",
         key="join_game_code",
         help="Digite o código fornecido pelo seu professor",
         placeholder="CÓDIGO DO JOGO",
         max_chars=6,
         value=st.session_state.input_game_code
     )
-    
+
     nickname = st.text_input(
-        "Seu apelido", 
+        "Seu apelido",
         key="join_nickname",
         help="Como você quer ser chamado no jogo",
         placeholder="SEU APELIDO",
         max_chars=12,
         value=st.session_state.input_nickname
     )
-    
+
     # Salvar nos estados persistentes
     st.session_state.input_game_code = game_code
     st.session_state.input_nickname = nickname
-    
+
     st.markdown("<p style='text-align: center; font-size: 24px; margin-bottom: 0px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
     icon_cols = st.columns(5)
     for i, icon in enumerate(PLAYER_ICONS):
         with icon_cols[i % 5]:
             if st.button(icon, key=f"icon_{i}", help="Clique para selecionar este"):
                 st.session_state.selected_icon = icon
-    
+
     selected_icon_value = st.session_state.get("selected_icon", None)
     st.markdown(f"<p style='text-align:center; padding-top:1px;'>Escolhido: {selected_icon_value if selected_icon_value else 'Nenhum'}</p>", unsafe_allow_html=True)
-    
+
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
-    
-    # Debounce no botão de entrada - NEW
+
+    # Debounce no botão de entrada
     button_id = "join_game_btn"
-    
+
     if st.button("Entrar", disabled=not can_join, key=button_id):
         if not button_debouncer.is_allowed(button_id):
             st.warning("Por favor, aguarde antes de tentar novamente.")
             return
-        
+
         if not can_join:
             st.error("Preencha todos os campos antes de entrar.")
             return
-        
+
         with st.spinner("Conectando ao jogo..."):
             def join_operation():
                 return Game.get_by_code(game_code.upper())
-            
+
             current_game = resilient_game_operation(join_operation)
-            
+
             if not current_game:
                 st.error("Código de jogo inválido ou servidor temporariamente indisponível. Tente novamente.")
                 button_debouncer.reset(button_id)
                 return
-                
+
             if current_game.status == "waiting":
                 try:
                     added_successfully = current_game.add_player(nickname, selected_icon_value)
-                    
+
                     if added_successfully:
-                        # Configurar estado da sessão
                         st.session_state.username = nickname
                         st.session_state.game_code = game_code.upper()
                         st.session_state.user_type = "student"
                         session_manager.get_session_id()
                         session_manager.update_activity()
-                        
+
                         # Limpar inputs
                         st.session_state.input_game_code = ""
                         st.session_state.input_nickname = ""
-                        
+
+                        # Persistir para rejoin após reload
+                        _set_rejoin_query_params(game_code.upper(), nickname)
+
                         navigate_to("waiting_room")
                         st.rerun()
                     else:
                         st.error("Este apelido já está sendo usado. Escolha outro.")
                         button_debouncer.reset(button_id)
-                        
+
                 except Exception as e:
                     logger.error(f"Error joining game: {e}")
                     st.error("Erro ao entrar no jogo. Tente novamente em alguns segundos.")
                     button_debouncer.reset(button_id)
-                    
+
             elif current_game.status == "active":
-                st.error("O jogo já começou e não aceita mais jogadores.")
-                button_debouncer.reset(button_id)
-            else: 
+                # Rejoin: se aluno já está no jogo, permitir reentrada
+                if nickname in current_game.players:
+                    st.session_state.username = nickname
+                    st.session_state.game_code = game_code.upper()
+                    st.session_state.user_type = "student"
+                    session_manager.get_session_id()
+                    session_manager.update_activity()
+                    _set_rejoin_query_params(game_code.upper(), nickname)
+                    navigate_to("game")
+                    st.rerun()
+                else:
+                    st.error("O jogo já começou e não aceita mais jogadores.")
+                    button_debouncer.reset(button_id)
+            else:
                 st.error("Este jogo já foi finalizado.")
                 button_debouncer.reset(button_id)
 
@@ -410,14 +487,16 @@ def render_game():
             with col2:
                 # Tabela de ranking otimizada
                 table_html = "<div class='custom-ranking-table-container'><table class='custom-ranking-table'>"
-                table_html += "<thead><tr><th>Pos.</th><th>Jogador</th><th>Pontos</th></tr></thead><tbody>"
-                
+                table_html += "<thead><tr><th>Pos.</th><th>Jogador</th><th>Pontos</th><th>🔥</th></tr></thead><tbody>"
+
                 for i, player_rank_info in enumerate(ranking[:10]):
                     icon = player_rank_info.get('icon', '❓')
                     name = html_module.escape(player_rank_info.get('name', 'Unknown'))
                     score = player_rank_info.get('score', 0)
-                    table_html += f"<tr><td>{i+1}</td><td>{icon} {name}</td><td>{score}</td></tr>"
-                
+                    streak = player_rank_info.get('streak', 0)
+                    streak_display = f"🔥x{streak}" if streak >= 2 else ""
+                    table_html += f"<tr><td>{i+1}</td><td>{icon} {name}</td><td>{score}</td><td>{streak_display}</td></tr>"
+
                 table_html += "</tbody></table></div>"
                 st.markdown(table_html, unsafe_allow_html=True)
                 
@@ -470,98 +549,126 @@ def render_game():
     question_text = current_game.questions[current_q_idx_game]['question']
     st.markdown(f"<div class='question-text'>{question_text}</div>", unsafe_allow_html=True)
     
-    # Status de conexão
-    status_placeholder = st.empty()
-    status_placeholder.info("🟢 Conectado")
-    
     if not already_answered:
         # Inicializar timer de resposta
-        if st.session_state.get("answer_time") is None: 
+        if st.session_state.get("answer_time") is None:
             st.session_state.answer_time = time.time()
 
-        # Opções de resposta com cores
-        option_colors = ["#E57373", "#64B5F6", "#FFD54F", "#81C784"]
-        option_text_colors = ["white", "white", "black", "white"]
-        option_cols = st.columns(2)
+        # Timer visual estilo Kahoot (20s limit)
+        elapsed = time.time() - st.session_state.answer_time
+        time_limit = 20.0
+        remaining = max(0, time_limit - elapsed)
+        progress = remaining / time_limit
+        timer_color = "#4CAF50" if remaining > 10 else ("#FF9800" if remaining > 5 else "#F44336")
+        st.markdown(
+            f"<div style='text-align:center;margin-bottom:10px;'>"
+            f"<span style='font-size:1.3rem;font-weight:bold;color:{timer_color};'>⏱ {int(remaining)}s</span>"
+            f"<div style='background:#e0e0e0;border-radius:10px;height:8px;margin-top:5px;'>"
+            f"<div style='background:{timer_color};width:{progress*100:.0f}%;height:8px;border-radius:10px;transition:width 1s linear;'></div>"
+            f"</div></div>",
+            unsafe_allow_html=True
+        )
+
+        # Kahoot-style shapes and colors
+        kahoot_shapes = ["▲", "◆", "●", "■"]
 
         current_options = current_game.questions[current_q_idx_game]['options']
-        
+
+        # Row 1: options 0 and 1
+        row1_cols = st.columns(2)
+        # Row 2: options 2 and 3
+        row2_cols = st.columns(2)
+
+        all_cols = [row1_cols[0], row1_cols[1], row2_cols[0], row2_cols[1]]
+
         for i_opt, option in enumerate(current_options):
             button_id = f"option_{i_opt}_{current_q_idx_game}_{player_name_session}"
-            
-            with option_cols[i_opt % 2]:
+            btn_label = f"{kahoot_shapes[i_opt]}  {option}"
+
+            with all_cols[i_opt]:
                 if st.button(
-                    option, 
-                    key=f"option_{i_opt}_{current_q_idx_game}", 
+                    btn_label,
+                    key=f"option_{i_opt}_{current_q_idx_game}",
                     help="Clique para selecionar esta resposta",
-                    use_container_width=True,
-                    type="primary"
+                    use_container_width=True
                 ):
-                    # Debounce check - NOVO
+                    # Debounce check
                     if not button_debouncer.is_allowed(button_id):
                         st.warning("Por favor, aguarde antes de responder novamente.")
                         time.sleep(1)
                         st.rerun()
                         return
-                    
+
                     # Processar resposta
-                    with st.spinner("Registrando sua resposta..."): 
+                    with st.spinner("Registrando sua resposta..."):
                         try:
                             time_taken = time.time() - st.session_state.answer_time
-                            st.session_state.answer_time = None 
-                            
+                            st.session_state.answer_time = None
+
                             # Registrar resposta com retry
-                            is_correct, points = current_game.record_answer(
+                            is_correct, points, streak = current_game.record_answer(
                                 player_name_session, i_opt, time_taken
                             )
-                            
-                            if is_correct is not False:  # Sucesso no registro
+
+                            if is_correct is not False:
                                 if is_correct:
+                                    streak_text = f" 🔥x{streak}" if streak >= 2 else ""
                                     st.markdown(
-                                        f"<div class='result-correct'>✓ Correto! +{points} pontos</div>", 
+                                        f"<div class='result-correct'>✓ Correto! +{points} pontos{streak_text}</div>",
                                         unsafe_allow_html=True
                                     )
                                 else:
                                     st.markdown(
-                                        f"<div class='result-incorrect'>✗ Incorreto</div>", 
+                                        f"<div class='result-incorrect'>✗ Incorreto</div>",
                                         unsafe_allow_html=True
                                     )
                                 time.sleep(2)
                             else:
                                 st.warning("Erro ao registrar resposta. Tente novamente.")
                                 button_debouncer.reset(button_id)
-                                
+
                         except Exception as e:
                             logger.error(f"Error recording answer: {e}")
                             st.error("Problema de conexão. Sua resposta pode não ter sido registrada.")
                             button_debouncer.reset(button_id)
-                        
+
                     st.rerun()
 
-        # CSS para as opções
-        css_options = ""
-        for i_css in range(len(current_options)): 
-            css_options += f"""
-                button[data-testid='stButton'][key='option_{i_css}_{current_q_idx_game}'] > div > p {{ 
-                    color: {option_text_colors[i_css]} !important; 
-                }}
-                button[data-testid='stButton'][key='option_{i_css}_{current_q_idx_game}'] {{ 
-                    background-color: {option_colors[i_css]} !important; 
-                    border: none !important; 
-                }}
-                button[data-testid='stButton'][key='option_{i_css}_{current_q_idx_game}']:hover {{ 
-                    background-color: {option_colors[i_css]} !important; 
-                    opacity: 0.9 !important; 
-                    border: none !important; 
-                }}
-                button[data-testid='stButton'][key='option_{i_css}_{current_q_idx_game}']:focus {{ 
-                    background-color: {option_colors[i_css]} !important; 
-                    opacity: 0.9 !important; 
-                    border: none !important; 
-                    box-shadow: none !important; 
-                }}
-            """
-        st.markdown(f"<style>{css_options}</style>", unsafe_allow_html=True)
+        # JavaScript to color buttons by their Kahoot shape prefix
+        color_js = """
+        <script>
+        (function() {
+            const shapeColors = {'▲': '#E21B3C', '◆': '#1368CE', '●': '#D89E00', '■': '#26890C'};
+            function colorKahootButtons() {
+                try {
+                    const doc = window.parent.document;
+                    const buttons = doc.querySelectorAll('[data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-primary"]');
+                    buttons.forEach(function(btn) {
+                        const text = btn.textContent || '';
+                        for (const [shape, color] of Object.entries(shapeColors)) {
+                            if (text.includes(shape)) {
+                                btn.style.setProperty('background-color', color, 'important');
+                                btn.style.setProperty('color', 'white', 'important');
+                                btn.style.setProperty('border', 'none', 'important');
+                                btn.style.setProperty('border-radius', '8px', 'important');
+                                btn.style.setProperty('min-height', '70px', 'important');
+                                btn.style.setProperty('font-size', '1rem', 'important');
+                                btn.style.setProperty('font-weight', 'bold', 'important');
+                                btn.style.setProperty('box-shadow', '0 4px 6px rgba(0,0,0,0.2)', 'important');
+                                break;
+                            }
+                        }
+                    });
+                } catch(e) {}
+            }
+            setTimeout(colorKahootButtons, 100);
+            setTimeout(colorKahootButtons, 300);
+            setTimeout(colorKahootButtons, 600);
+            setTimeout(colorKahootButtons, 1200);
+        })();
+        </script>
+        """
+        html(color_js, height=0)
     else:
         st.info("✅ Você já respondeu esta pergunta. Aguarde a próxima.")
         time.sleep(2)
@@ -658,22 +765,22 @@ def render_game_results():
         
         table_html_ranking = "<div class='custom-ranking-table-container'><table class='custom-ranking-table'>"
         table_html_ranking += "<thead><tr><th>Pos.</th><th>Jogador</th><th>Pontos</th></tr></thead><tbody>"
-        
+
         if not ranking:
             table_html_ranking += "<tr><td colspan='3'>Nenhum jogador participou ou pontuou.</td></tr>"
         else:
-            for i_rank_table, player_info_rank in enumerate(ranking): 
+            for i_rank_table, player_info_rank in enumerate(ranking):
                 medal = ""
                 if i_rank_table == 0: medal = "<span class='medal-icon'>🥇</span>"
                 elif i_rank_table == 1: medal = "<span class='medal-icon'>🥈</span>"
                 elif i_rank_table == 2: medal = "<span class='medal-icon'>🥉</span>"
-                
+
                 is_current_player_student = (
-                    player_info_rank.get("name") == player_name_for_results and 
+                    player_info_rank.get("name") == player_name_for_results and
                     st.session_state.user_type == "student"
                 )
                 row_class = "current-player-row" if is_current_player_student else ""
-                
+
                 icon = player_info_rank.get('icon', '❓')
                 name = html_module.escape(player_info_rank.get('name', 'Unknown'))
                 score = player_info_rank.get('score', 0)
@@ -682,7 +789,7 @@ def render_game_results():
                 table_html_ranking += f"<td>{i_rank_table+1} {medal}</td>"
                 table_html_ranking += f"<td>{icon} {name}</td>"
                 table_html_ranking += f"<td>{score}</td></tr>"
-        
+
         table_html_ranking += "</tbody></table></div>"
         st.markdown(table_html_ranking, unsafe_allow_html=True)
 
@@ -702,6 +809,8 @@ def render_game_results():
             if st.button("Voltar ao Início", key="back_to_home_results", use_container_width=True):
                 # Limpar estados de sessão relacionados ao jogo/aluno
                 session_manager.clear()
+                # Limpar query params de rejoin
+                st.query_params.clear()
                 navigate_to("home")
                 st.rerun()
     

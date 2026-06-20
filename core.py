@@ -617,55 +617,70 @@ class Game:
                 return False
 
     def record_answer(self, player_name, answer_index, time_taken):
-        """Record answer com lock atomico - FIXED: race condition"""
+        """Record answer com scoring estilo Kahoot (streak bonus + time-based)"""
         operation_id = f"answer:{self.code}:{player_name}:{self.current_question}"
-        
+
         # Check deduplication (previne double-click)
         if dedup_cache.exists(operation_id):
             result = dedup_cache.get(operation_id)
             logger.info(f"Duplicate answer detected: {player_name}")
-            return result if result else (False, 0)
-        
+            return result if result else (False, 0, 0)
+
         with DistributedLock(f"game:{self.code}:player:{player_name}", timeout=5):
             # Reload fresh state
             fresh_game = Game.get_by_code(self.code)
             if fresh_game:
                 self.players = fresh_game.players
-            
-            if (player_name not in self.players or 
-                self.current_question >= len(self.questions) or 
+
+            if (player_name not in self.players or
+                self.current_question >= len(self.questions) or
                 self.status != "active"):
-                result = (False, 0)
+                result = (False, 0, 0)
                 dedup_cache.set(operation_id, result)
                 return result
 
             # Verificar se já respondeu esta pergunta
             player_data = self.players[player_name]
             if not isinstance(player_data, dict):
-                result = (False, 0)
+                result = (False, 0, 0)
                 dedup_cache.set(operation_id, result)
                 return result
-                
+
             answers = player_data.get("answers", [])
             if any(ans.get("question") == self.current_question for ans in answers):
-                result = (False, 0)
+                result = (False, 0, 0)
                 dedup_cache.set(operation_id, result)
                 return result
 
-            # Calcular pontos
+            # Calcular pontos estilo Kahoot
             correct_answer_idx = self.questions[self.current_question]["correct"]
             is_correct = (answer_index == correct_answer_idx)
-            
-            max_points = 1000
-            min_points_correct = 100 
-            time_penalty_cap = 20.0 
 
+            # Calcular streak (sequência de acertos consecutivos)
+            streak = 0
+            if is_correct:
+                sorted_answers = sorted(answers, key=lambda a: a.get("question", 0))
+                for ans in reversed(sorted_answers):
+                    if ans.get("correct"):
+                        streak += 1
+                    else:
+                        break
+                streak += 1  # inclui a resposta atual
+
+            # Pontuação Kahoot: base 1000 pontos, time decay linear, streak bonus
+            time_limit = 20.0
             points = 0
             if is_correct:
-                points_reduction = (max_points - min_points_correct) * (min(time_taken, time_penalty_cap) / time_penalty_cap)
-                points = int(max_points - points_reduction)
-                points = max(min_points_correct, points)
-            
+                # Fórmula Kahoot: pontos = base * (1 - (time / limit) / 2)
+                # Resultado: resposta instantânea = 1000, no limite = 500
+                time_factor = 1.0 - (min(time_taken, time_limit) / time_limit) / 2.0
+                base_points = int(1000 * time_factor)
+                base_points = max(500, base_points)
+
+                # Streak bonus: +100 por acerto consecutivo (cap 500)
+                streak_bonus = min((streak - 1) * 100, 500)
+                points = base_points + streak_bonus
+
             # Garantir que 'answers' existe e é uma lista
             if "answers" not in self.players[player_name] or not isinstance(self.players[player_name]["answers"], list):
                 self.players[player_name]["answers"] = []
@@ -676,29 +691,39 @@ class Game:
                 "correct": is_correct,
                 "time": round(time_taken, 2),
                 "points": points,
+                "streak": streak,
                 "timestamp": datetime.now().isoformat()
             })
             self.players[player_name]["score"] += points
-            
+
             self._force_save()
-            
-            result = (is_correct, points)
+
+            result = (is_correct, points, streak)
             dedup_cache.set(operation_id, result)
-            logger.info(f"Answer recorded: {player_name} Q{self.current_question} correct={is_correct} points={points}")
+            logger.info(f"Answer recorded: {player_name} Q{self.current_question} correct={is_correct} points={points} streak={streak}")
             return result
 
     def get_ranking(self):
         with self._lock:
             if not isinstance(self.players, dict):
                 return []
-                
+
             ranking = []
             for name, data in self.players.items():
                 if isinstance(data, dict):
+                    # Calcular streak atual do jogador
+                    answers = data.get("answers", [])
+                    current_streak = 0
+                    for ans in reversed(sorted(answers, key=lambda a: a.get("question", 0))):
+                        if ans.get("correct"):
+                            current_streak += 1
+                        else:
+                            break
                     ranking.append({
-                        "name": name, 
-                        "icon": data.get("icon", "❓"), 
-                        "score": data.get("score", 0)
+                        "name": name,
+                        "icon": data.get("icon", "❓"),
+                        "score": data.get("score", 0),
+                        "streak": current_streak
                     })
             return sorted(ranking, key=lambda x: x["score"], reverse=True)
 
