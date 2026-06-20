@@ -554,20 +554,42 @@ def render_game():
         if st.session_state.get("answer_time") is None:
             st.session_state.answer_time = time.time()
 
-        # Timer visual estilo Kahoot (20s limit)
-        elapsed = time.time() - st.session_state.answer_time
-        time_limit = 20.0
-        remaining = max(0, time_limit - elapsed)
-        progress = remaining / time_limit
-        timer_color = "#4CAF50" if remaining > 10 else ("#FF9800" if remaining > 5 else "#F44336")
-        st.markdown(
-            f"<div style='text-align:center;margin-bottom:10px;'>"
-            f"<span style='font-size:1.3rem;font-weight:bold;color:{timer_color};'>⏱ {int(remaining)}s</span>"
-            f"<div style='background:#e0e0e0;border-radius:10px;height:8px;margin-top:5px;'>"
-            f"<div style='background:{timer_color};width:{progress*100:.0f}%;height:8px;border-radius:10px;transition:width 1s linear;'></div>"
-            f"</div></div>",
-            unsafe_allow_html=True
-        )
+        # Timer em JavaScript real (countdown ao vivo, não estático)
+        elapsed_ms = int((time.time() - st.session_state.answer_time) * 1000)
+        timer_js = f"""
+        <div id="kahoot-timer" style="text-align:center;margin-bottom:10px;">
+            <span id="timer-text" style="font-size:1.3rem;font-weight:bold;color:#4CAF50;">⏱ 20s</span>
+            <div style="background:#e0e0e0;border-radius:10px;height:8px;margin-top:5px;">
+                <div id="timer-bar" style="background:#4CAF50;width:100%;height:8px;border-radius:10px;transition:width 0.5s linear;"></div>
+            </div>
+        </div>
+        <script>
+        (function() {{
+            const LIMIT = 20000;
+            const elapsed0 = {elapsed_ms};
+            const start = Date.now() - elapsed0;
+            const txt = document.getElementById('timer-text');
+            const bar = document.getElementById('timer-bar');
+            if (!txt || !bar) return;
+            function tick() {{
+                const elapsed = Date.now() - start;
+                const remaining = Math.max(0, LIMIT - elapsed);
+                const secs = Math.ceil(remaining / 1000);
+                const pct = (remaining / LIMIT) * 100;
+                let color = '#4CAF50';
+                if (remaining < 5000) color = '#F44336';
+                else if (remaining < 10000) color = '#FF9800';
+                txt.textContent = '⏱ ' + secs + 's';
+                txt.style.color = color;
+                bar.style.width = pct + '%';
+                bar.style.background = color;
+                if (remaining > 0) requestAnimationFrame(tick);
+            }}
+            tick();
+        }})();
+        </script>
+        """
+        html(timer_js, height=50)
 
         # Kahoot-style shapes and colors
         kahoot_shapes = ["▲", "◆", "●", "■"]
@@ -605,14 +627,13 @@ def render_game():
                             time_taken = time.time() - st.session_state.answer_time
                             st.session_state.answer_time = None
 
-                            # Registrar resposta com retry
                             is_correct, points, streak = current_game.record_answer(
                                 player_name_session, i_opt, time_taken
                             )
 
                             if is_correct is not False:
                                 if is_correct:
-                                    streak_text = f" 🔥x{streak}" if streak >= 2 else ""
+                                    streak_text = f" \U0001f525x{streak}" if streak >= 2 else ""
                                     st.markdown(
                                         f"<div class='result-correct'>✓ Correto! +{points} pontos{streak_text}</div>",
                                         unsafe_allow_html=True
@@ -634,19 +655,19 @@ def render_game():
 
                     st.rerun()
 
-        # JavaScript to color buttons by their Kahoot shape prefix
-        color_js = """
+        # MutationObserver-based coloring: detects buttons even after Streamlit rerenders
+        color_js = f"""
         <script>
-        (function() {
-            const shapeColors = {'▲': '#E21B3C', '◆': '#1368CE', '●': '#D89E00', '■': '#26890C'};
-            function colorKahootButtons() {
-                try {
+        (function() {{
+            const SHAPES = {{'\\u25b2': '#E21B3C', '\\u25c6': '#1368CE', '\\u25cf': '#D89E00', '\\u25a0': '#26890C'}};
+            function colorButtons() {{
+                try {{
                     const doc = window.parent.document;
-                    const buttons = doc.querySelectorAll('[data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-primary"]');
-                    buttons.forEach(function(btn) {
+                    const buttons = doc.querySelectorAll('button[kind="secondary"], button[kind="primary"], [data-testid*="stBaseButton"]');
+                    buttons.forEach(function(btn) {{
                         const text = btn.textContent || '';
-                        for (const [shape, color] of Object.entries(shapeColors)) {
-                            if (text.includes(shape)) {
+                        for (const [shape, color] of Object.entries(SHAPES)) {{
+                            if (text.indexOf(shape) !== -1) {{
                                 btn.style.setProperty('background-color', color, 'important');
                                 btn.style.setProperty('color', 'white', 'important');
                                 btn.style.setProperty('border', 'none', 'important');
@@ -655,17 +676,25 @@ def render_game():
                                 btn.style.setProperty('font-size', '1rem', 'important');
                                 btn.style.setProperty('font-weight', 'bold', 'important');
                                 btn.style.setProperty('box-shadow', '0 4px 6px rgba(0,0,0,0.2)', 'important');
+                                const p = btn.querySelector('p');
+                                if (p) p.style.setProperty('color', 'white', 'important');
                                 break;
-                            }
-                        }
-                    });
-                } catch(e) {}
-            }
-            setTimeout(colorKahootButtons, 100);
-            setTimeout(colorKahootButtons, 300);
-            setTimeout(colorKahootButtons, 600);
-            setTimeout(colorKahootButtons, 1200);
-        })();
+                            }}
+                        }}
+                    }});
+                }} catch(e) {{}}
+            }}
+            colorButtons();
+            setTimeout(colorButtons, 150);
+            setTimeout(colorButtons, 400);
+            setTimeout(colorButtons, 800);
+            setTimeout(colorButtons, 1500);
+            try {{
+                const observer = new MutationObserver(colorButtons);
+                observer.observe(window.parent.document.body, {{childList: true, subtree: true}});
+                setTimeout(function() {{ observer.disconnect(); }}, 10000);
+            }} catch(e) {{}}
+        }})();
         </script>
         """
         html(color_js, height=0)
