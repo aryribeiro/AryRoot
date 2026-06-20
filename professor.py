@@ -947,7 +947,7 @@ def render_teacher_game_control():
             st.rerun()
     with col_code:
         st.markdown(
-            f"<div style='text-align:center;'>"
+            f"<div style='text-align:right;'>"
             f"<span style='font-size:1.5rem;font-weight:bold;'>🔒 Código: </span>"
             f"<code style='font-size:1.5rem;background:#f0f0f0;padding:4px 12px;border-radius:6px;'>{current_game.code}</code>"
             f"</div>",
