@@ -325,19 +325,19 @@ def render_student_home():
         background-color: #e8f4fd !important;
         transform: scale(1.1);
     }
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] {
-        scrollbar-color: #E21B3C #f0f0f0;
+    [data-testid="stVerticalBlockBorderWrapper"] > div {
+        scrollbar-color: #E21B3C #f0f0f0 !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"]::-webkit-scrollbar {
-        width: 8px;
+    [data-testid="stVerticalBlockBorderWrapper"] > div::-webkit-scrollbar {
+        width: 8px !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"]::-webkit-scrollbar-thumb {
-        background-color: #E21B3C;
-        border-radius: 4px;
+    [data-testid="stVerticalBlockBorderWrapper"] > div::-webkit-scrollbar-thumb {
+        background-color: #E21B3C !important;
+        border-radius: 4px !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"]::-webkit-scrollbar-track {
-        background: #f0f0f0;
-        border-radius: 4px;
+    [data-testid="stVerticalBlockBorderWrapper"] > div::-webkit-scrollbar-track {
+        background: #f0f0f0 !important;
+        border-radius: 4px !important;
     }
     </style>""", unsafe_allow_html=True)
 
