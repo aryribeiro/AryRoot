@@ -589,7 +589,7 @@ def render_game():
         }})();
         </script>
         """
-        html(timer_js, height=50, key=f"kahoot_timer_q{current_q_idx_game}")
+        html(timer_js, height=50)
 
         # Kahoot-style shapes and colors
         kahoot_shapes = ["▲", "◆", "●", "■"]
@@ -699,7 +699,7 @@ def render_game():
         }})();
         </script>
         """
-        html(color_js, height=0, key=f"kahoot_colors_q{current_q_idx_game}")
+        html(color_js, height=0)
     else:
         st.info("✅ Você já respondeu esta pergunta. Aguarde a próxima.")
         time.sleep(2)
