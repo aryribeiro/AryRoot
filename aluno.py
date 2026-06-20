@@ -318,10 +318,13 @@ def render_student_home():
     )
 
     # Emojis grid HTML/CSS/JS puro (funciona em mobile e desktop)
-    icons_json = str(PLAYER_ICONS).replace("'", "\\'")
-    emoji_html = f"""
+    emoji_buttons = "".join(
+        f'<button class="emoji-btn" onclick="selectEmoji(this)">{icon}</button>'
+        for icon in PLAYER_ICONS
+    )
+    emoji_html = """
     <style>
-        .emoji-grid {{
+        .emoji-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
             gap: 6px;
@@ -330,11 +333,11 @@ def render_student_home():
             padding: 8px;
             scrollbar-color: #46178F #f0f0f0;
             scrollbar-width: thin;
-        }}
-        .emoji-grid::-webkit-scrollbar {{ width: 6px; }}
-        .emoji-grid::-webkit-scrollbar-thumb {{ background: #46178F; border-radius: 3px; }}
-        .emoji-grid::-webkit-scrollbar-track {{ background: #f0f0f0; }}
-        .emoji-btn {{
+        }
+        .emoji-grid::-webkit-scrollbar { width: 6px; }
+        .emoji-grid::-webkit-scrollbar-thumb { background: #46178F; border-radius: 3px; }
+        .emoji-grid::-webkit-scrollbar-track { background: #f0f0f0; }
+        .emoji-btn {
             font-size: 1.8rem;
             padding: 6px;
             border: 1px solid #e8e8e8;
@@ -343,31 +346,22 @@ def render_student_home():
             cursor: pointer;
             text-align: center;
             transition: all 0.15s;
-        }}
-        .emoji-btn:hover {{ background: #e8f4fd; transform: scale(1.1); }}
-        .emoji-btn.selected {{ border: 2px solid #46178F; background: #f3e8ff; }}
+        }
+        .emoji-btn:hover { background: #e8f4fd; transform: scale(1.1); }
+        .emoji-btn.selected { border: 2px solid #46178F; background: #f3e8ff; }
     </style>
     <div class="emoji-grid">
-        {''.join(f'<button class="emoji-btn" onclick="selectEmoji(this, \\'{icon}\\')">{icon}</button>' for icon in PLAYER_ICONS)}
+        """ + emoji_buttons + """
     </div>
     <script>
-        function selectEmoji(btn, icon) {{
-            document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+        function selectEmoji(btn) {
+            document.querySelectorAll('.emoji-btn').forEach(function(b) { b.classList.remove('selected'); });
             btn.classList.add('selected');
-            // Atualiza query param para o Streamlit ler
-            const url = new URL(window.parent.location);
+            var icon = btn.textContent.trim();
+            var url = new URL(window.parent.location);
             url.searchParams.set('ei', icon);
-            window.parent.history.replaceState({{}}, '', url);
-            // Força rerun do Streamlit
-            const doc = window.parent.document;
-            const inputs = doc.querySelectorAll('input[type="hidden"]');
-            // Trigger Streamlit rerun via simulated widget change
-            window.parent.postMessage({{type: 'streamlit:setComponentValue', value: icon}}, '*');
-            // Fallback: click invisível pra forçar rerun
-            setTimeout(function() {{
-                window.parent.location.href = url.toString();
-            }}, 100);
-        }}
+            window.parent.location.href = url.toString();
+        }
     </script>
     """
     html(emoji_html, height=290)
