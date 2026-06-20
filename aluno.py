@@ -273,7 +273,7 @@ def render_student_home():
     if _try_rejoin_from_query_params():
         return
 
-    st.markdown("<p style='text-align: center; font-size: 24px; margin-top: -2rem; margin-bottom: 0px;'>🚀Entrar no Jogo</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 24px; margin-top: -1.5rem; margin-bottom: -10px;'>🚀Entrar no Jogo</p>", unsafe_allow_html=True)
 
     # Estado persistente dos inputs
     if 'input_game_code' not in st.session_state:
@@ -303,8 +303,12 @@ def render_student_home():
     st.session_state.input_game_code = game_code
     st.session_state.input_nickname = nickname
 
-    st.markdown("<p style='text-align: center; font-size: 20px; margin-bottom: 0px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 20px; margin-bottom: -10px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
 
+    # Ler emoji do query param (vem do JS no html component)
+    ei_param = st.query_params.get("ei", None)
+    if ei_param and ei_param in PLAYER_ICONS:
+        st.session_state["selected_icon"] = ei_param
     selected_icon_value = st.session_state.get("selected_icon", None)
     placeholder = "<span style='color:#46178F;font-weight:bold;'>?</span>" if not selected_icon_value else selected_icon_value
     st.markdown(
@@ -313,84 +317,60 @@ def render_student_home():
         unsafe_allow_html=True
     )
 
-    # Emojis em grid 5 colunas com scroll vertical (sem st.columns para funcionar no mobile)
-    emoji_container = st.container(height=280)
-    with emoji_container:
-        num_cols = 5
-        rows = [PLAYER_ICONS[i:i+num_cols] for i in range(0, len(PLAYER_ICONS), num_cols)]
-        for row in rows:
-            cols = st.columns(num_cols, gap="small")
-            for idx, icon in enumerate(row):
-                with cols[idx]:
-                    global_idx = PLAYER_ICONS.index(icon)
-                    st.button(icon, key=f"icon_{global_idx}",
-                              on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
-                              type="secondary")
-
-    # CSS + JS emojis grid — manipula DOM diretamente para funcionar no mobile
-    html("""
+    # Emojis grid HTML/CSS/JS puro (funciona em mobile e desktop)
+    icons_json = str(PLAYER_ICONS).replace("'", "\\'")
+    emoji_html = f"""
+    <style>
+        .emoji-grid {{
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding: 8px;
+            scrollbar-color: #46178F #f0f0f0;
+            scrollbar-width: thin;
+        }}
+        .emoji-grid::-webkit-scrollbar {{ width: 6px; }}
+        .emoji-grid::-webkit-scrollbar-thumb {{ background: #46178F; border-radius: 3px; }}
+        .emoji-grid::-webkit-scrollbar-track {{ background: #f0f0f0; }}
+        .emoji-btn {{
+            font-size: 1.8rem;
+            padding: 6px;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s;
+        }}
+        .emoji-btn:hover {{ background: #e8f4fd; transform: scale(1.1); }}
+        .emoji-btn.selected {{ border: 2px solid #46178F; background: #f3e8ff; }}
+    </style>
+    <div class="emoji-grid">
+        {''.join(f'<button class="emoji-btn" onclick="selectEmoji(this, \\'{icon}\\')">{icon}</button>' for icon in PLAYER_ICONS)}
+    </div>
     <script>
-    (function() {
-        const doc = window.parent.document;
-        if (doc.getElementById('emoji-grid-css')) return;
-        const style = doc.createElement('style');
-        style.id = 'emoji-grid-css';
-        style.textContent = `
-            .emoji-grid-fixed {
-                display: grid !important;
-                grid-template-columns: repeat(5, 1fr) !important;
-                gap: 4px !important;
-            }
-            .emoji-grid-fixed > div {
-                width: 100% !important;
-                min-width: 0 !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] button {
-                font-size: 2rem !important;
-                min-height: 44px !important;
-                padding: 2px !important;
-                background-color: transparent !important;
-                border: 1px solid #e8e8e8 !important;
-                width: 100% !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] button:hover {
-                background-color: #e8f4fd !important;
-            }
-        `;
-        doc.head.appendChild(style);
-
-        function fixGrid() {
-            var wrappers = doc.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]');
-            wrappers.forEach(function(w) {
-                var blocks = w.querySelectorAll('[data-testid="stHorizontalBlock"]');
-                blocks.forEach(function(b) {
-                    b.classList.add('emoji-grid-fixed');
-                    b.style.setProperty('display', 'grid', 'important');
-                    b.style.setProperty('grid-template-columns', 'repeat(5, 1fr)', 'important');
-                    b.style.setProperty('gap', '4px', 'important');
-                    var children = b.children;
-                    for (var i = 0; i < children.length; i++) {
-                        children[i].style.setProperty('width', '100%', 'important');
-                        children[i].style.setProperty('min-width', '0', 'important');
-                        children[i].style.setProperty('max-width', '100%', 'important');
-                        children[i].style.setProperty('flex', 'unset', 'important');
-                    }
-                });
-            });
-        }
-        fixGrid();
-        setTimeout(fixGrid, 300);
-        setTimeout(fixGrid, 800);
-        setTimeout(fixGrid, 2000);
-        var obs = new MutationObserver(fixGrid);
-        obs.observe(doc.body, {childList: true, subtree: true});
-        setTimeout(function() { obs.disconnect(); }, 15000);
-    })();
+        function selectEmoji(btn, icon) {{
+            document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            // Atualiza query param para o Streamlit ler
+            const url = new URL(window.parent.location);
+            url.searchParams.set('ei', icon);
+            window.parent.history.replaceState({{}}, '', url);
+            // Força rerun do Streamlit
+            const doc = window.parent.document;
+            const inputs = doc.querySelectorAll('input[type="hidden"]');
+            // Trigger Streamlit rerun via simulated widget change
+            window.parent.postMessage({{type: 'streamlit:setComponentValue', value: icon}}, '*');
+            // Fallback: click invisível pra forçar rerun
+            setTimeout(function() {{
+                window.parent.location.href = url.toString();
+            }}, 100);
+        }}
     </script>
-    """, height=0)
-
-    # Reduzir espaço entre emojis e botão Entrar
-    st.markdown("<div style='margin-top:-1rem;'></div>", unsafe_allow_html=True)
+    """
+    html(emoji_html, height=290)
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
