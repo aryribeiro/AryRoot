@@ -200,43 +200,27 @@ _GLOBAL_JS = """
         }
     } catch(e) {}
 
-    // Scrollbar roxa global
-    if (!doc.getElementById('aryroot-scrollbar-css')) {
+    // Scrollbar roxa global + forçar 5 colunas emojis
+    if (!doc.getElementById('aryroot-global-css')) {
         const style = doc.createElement('style');
-        style.id = 'aryroot-scrollbar-css';
+        style.id = 'aryroot-global-css';
         style.textContent = `
             * { scrollbar-color: #46178F #f0f0f0 !important; scrollbar-width: thin !important; }
             *::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
             *::-webkit-scrollbar-thumb { background-color: #46178F !important; border-radius: 4px !important; }
             *::-webkit-scrollbar-track { background: #f0f0f0 !important; border-radius: 4px !important; }
+            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] {
+                display: grid !important;
+                grid-template-columns: repeat(5, 1fr) !important;
+                gap: 4px !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stColumn"] {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
         `;
         doc.head.appendChild(style);
     }
-
-    // Forçar 5 colunas emojis no mobile (sobrescreve inline styles do Streamlit)
-    function fixEmojiGrid() {
-        var wrappers = doc.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]');
-        wrappers.forEach(function(wrapper) {
-            var rows = wrapper.querySelectorAll('[data-testid="stHorizontalBlock"]');
-            rows.forEach(function(row) {
-                row.style.setProperty('flex-wrap', 'nowrap', 'important');
-                row.style.setProperty('flex-direction', 'row', 'important');
-                row.style.setProperty('gap', '2px', 'important');
-                var cols = row.querySelectorAll('[data-testid="stColumn"]');
-                cols.forEach(function(col) {
-                    col.style.setProperty('min-width', '0', 'important');
-                    col.style.setProperty('flex', '1 1 20%', 'important');
-                    col.style.setProperty('width', '20%', 'important');
-                });
-            });
-        });
-    }
-    fixEmojiGrid();
-    setTimeout(fixEmojiGrid, 500);
-    setTimeout(fixEmojiGrid, 1500);
-    var emojiObserver = new MutationObserver(fixEmojiGrid);
-    emojiObserver.observe(doc.body, {childList: true, subtree: true});
-    setTimeout(function() { emojiObserver.disconnect(); }, 10000);
 
     // Trilha sonora
     if (!doc.getElementById('aryroot-bgm')) {
