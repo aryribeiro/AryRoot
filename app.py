@@ -345,8 +345,8 @@ def render_home():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(
-            "<p style='text-align: center; font-size: 52px; margin-bottom: 0px;'>"
-            "<strong>🎮AryRoot</strong></p>", 
+            "<p style='text-align: center; font-size: 52px; margin-top: -2rem; margin-bottom: 0px;'>"
+            "<strong>🎮AryRoot</strong></p>",
             unsafe_allow_html=True
         )
         st.markdown(

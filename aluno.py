@@ -273,7 +273,7 @@ def render_student_home():
     if _try_rejoin_from_query_params():
         return
 
-    st.markdown("<p style='text-align: center; font-size: 24px; margin-bottom: 0px;'>🚀Entrar no Jogo</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 24px; margin-top: -1rem; margin-bottom: 0px;'>🚀Entrar no Jogo</p>", unsafe_allow_html=True)
 
     # Estado persistente dos inputs
     if 'input_game_code' not in st.session_state:
