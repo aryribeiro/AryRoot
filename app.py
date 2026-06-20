@@ -161,14 +161,15 @@ _GLOBAL_CSS = """<style>
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     #MainMenu { display: none !important; }
     footer { display: none !important; }
-    [data-testid="stHeader"] { background: transparent !important; height: 0.5rem !important; min-height: 0 !important; }
+    [data-testid="stHeader"] { display: none !important; height: 0 !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; }
     [data-testid="stHeader"] [data-testid="stActionButtonIcon"], [data-testid="stHeader"] a, .stDeployButton, [data-testid="stToolbar"] { display: none !important; }
     [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] { display: none !important; }
     [data-testid="stSidebar"] { min-width: 280px !important; width: 280px !important; transform: none !important; }
     [data-testid="stSidebar"][aria-expanded="false"] { transform: none !important; margin-left: 0 !important; width: 280px !important; min-width: 280px !important; }
-    .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; }
-    .stApp { padding-top: 0 !important; }
-    .stApp > header + div { padding-top: 0 !important; }
+    .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; margin-top: 0rem !important; }
+    .stApp { padding-top: 0 !important; margin-top: 0 !important; }
+    .stApp > header + div, .stMainBlockContainer { padding-top: 0 !important; margin-top: 0 !important; }
+    .stApp [data-testid="stAppViewBlockContainer"] { padding-top: 0 !important; }
 </style>"""
 
 st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
@@ -200,7 +201,7 @@ _GLOBAL_JS = """
         }
     } catch(e) {}
 
-    // Scrollbar roxa global + forçar 5 colunas emojis
+    // Scrollbar roxa global
     if (!doc.getElementById('aryroot-global-css')) {
         const style = doc.createElement('style');
         style.id = 'aryroot-global-css';
@@ -209,15 +210,6 @@ _GLOBAL_JS = """
             *::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
             *::-webkit-scrollbar-thumb { background-color: #46178F !important; border-radius: 4px !important; }
             *::-webkit-scrollbar-track { background: #f0f0f0 !important; border-radius: 4px !important; }
-            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] {
-                display: grid !important;
-                grid-template-columns: repeat(5, 1fr) !important;
-                gap: 4px !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stColumn"] {
-                width: 100% !important;
-                min-width: 0 !important;
-            }
         `;
         doc.head.appendChild(style);
     }
@@ -368,7 +360,7 @@ def render_home():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(
-            "<p style='text-align: center; font-size: 52px; margin-top: -2rem; margin-bottom: 0px;'>"
+            "<p style='text-align: center; font-size: 52px; margin-top: -3.5rem; margin-bottom: 0px;'>"
             "<strong>🎮AryRoot</strong></p>",
             unsafe_allow_html=True
         )

@@ -273,7 +273,7 @@ def render_student_home():
     if _try_rejoin_from_query_params():
         return
 
-    st.markdown("<p style='text-align: center; font-size: 24px; margin-top: -1rem; margin-bottom: 0px;'>🚀Entrar no Jogo</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 24px; margin-top: -2rem; margin-bottom: 0px;'>🚀Entrar no Jogo</p>", unsafe_allow_html=True)
 
     # Estado persistente dos inputs
     if 'input_game_code' not in st.session_state:
@@ -313,34 +313,55 @@ def render_student_home():
         unsafe_allow_html=True
     )
 
-    # CSS local para emojis maiores (mobile grid é tratado via JS no app.py)
-    st.markdown("""<style>
-    [data-testid="stVerticalBlockBorderWrapper"] button {
-        font-size: 2.2rem !important;
-        min-height: 50px !important;
-        padding: 4px !important;
-        background-color: transparent !important;
-        border: 1px solid #e8e8e8 !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"] button:hover {
-        background-color: #e8f4fd !important;
-        transform: scale(1.1);
-    }
-    </style>""", unsafe_allow_html=True)
-
-    # Emojis em grid 5 colunas com scroll vertical
+    # Emojis em grid 5 colunas com scroll vertical (sem st.columns para funcionar no mobile)
     emoji_container = st.container(height=280)
     with emoji_container:
         num_cols = 5
         rows = [PLAYER_ICONS[i:i+num_cols] for i in range(0, len(PLAYER_ICONS), num_cols)]
         for row in rows:
-            cols = st.columns(num_cols)
+            cols = st.columns(num_cols, gap="small")
             for idx, icon in enumerate(row):
                 with cols[idx]:
                     global_idx = PLAYER_ICONS.index(icon)
                     st.button(icon, key=f"icon_{global_idx}",
                               on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
                               type="secondary")
+
+    # CSS emojis — injeta no parent via JS (único método que funciona no mobile)
+    html("""
+    <script>
+    (function() {
+        const doc = window.parent.document;
+        if (doc.getElementById('emoji-grid-css')) return;
+        const style = doc.createElement('style');
+        style.id = 'emoji-grid-css';
+        style.textContent = `
+            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] {
+                display: grid !important;
+                grid-template-columns: repeat(5, 1fr) !important;
+                gap: 4px !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] > div {
+                width: 100% !important;
+                min-width: 0 !important;
+                flex: unset !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] button {
+                font-size: 2.2rem !important;
+                min-height: 50px !important;
+                padding: 4px !important;
+                background-color: transparent !important;
+                border: 1px solid #e8e8e8 !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] button:hover {
+                background-color: #e8f4fd !important;
+                transform: scale(1.1);
+            }
+        `;
+        doc.head.appendChild(style);
+    })();
+    </script>
+    """, height=0)
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
