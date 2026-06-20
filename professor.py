@@ -117,7 +117,7 @@ def render_teacher_login():
     if "captcha_question" not in st.session_state:
         captcha_manager.generate_captcha()
     
-    _, central_column, _ = st.columns([0.75, 2.5, 0.75])
+    _, central_column, _ = st.columns([0.5, 3, 0.5])
     
     with central_column:
         # Form para evitar múltiplas submissões
