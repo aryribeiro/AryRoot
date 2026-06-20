@@ -325,17 +325,22 @@ def render_student_home():
         background-color: #e8f4fd !important;
         transform: scale(1.1);
     }
-    [data-testid="stVerticalBlockBorderWrapper"] > div {
+    [data-testid="stVerticalBlockBorderWrapper"],
+    [data-testid="stVerticalBlockBorderWrapper"] *,
+    [data-testid="stVerticalBlockBorderWrapper"] div[style*="overflow"] {
         scrollbar-color: #E21B3C #f0f0f0 !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] > div::-webkit-scrollbar {
+    [data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar,
+    [data-testid="stVerticalBlockBorderWrapper"] *::-webkit-scrollbar {
         width: 8px !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] > div::-webkit-scrollbar-thumb {
+    [data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar-thumb,
+    [data-testid="stVerticalBlockBorderWrapper"] *::-webkit-scrollbar-thumb {
         background-color: #E21B3C !important;
         border-radius: 4px !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] > div::-webkit-scrollbar-track {
+    [data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar-track,
+    [data-testid="stVerticalBlockBorderWrapper"] *::-webkit-scrollbar-track {
         background: #f0f0f0 !important;
         border-radius: 4px !important;
     }
