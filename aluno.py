@@ -589,7 +589,7 @@ def render_game():
         }})();
         </script>
         """
-        html(timer_js, height=50)
+        html(timer_js, height=50, key=f"kahoot_timer_q{current_q_idx_game}")
 
         # Kahoot-style shapes and colors
         kahoot_shapes = ["▲", "◆", "●", "■"]
@@ -655,10 +655,11 @@ def render_game():
 
                     st.rerun()
 
-        # MutationObserver-based coloring: detects buttons even after Streamlit rerenders
+        # Unique key per question forces Streamlit to re-render the component
         color_js = f"""
         <script>
         (function() {{
+            var Q_IDX = {current_q_idx_game};
             const SHAPES = {{'\\u25b2': '#E21B3C', '\\u25c6': '#1368CE', '\\u25cf': '#D89E00', '\\u25a0': '#26890C'}};
             function colorButtons() {{
                 try {{
@@ -685,19 +686,20 @@ def render_game():
                 }} catch(e) {{}}
             }}
             colorButtons();
-            setTimeout(colorButtons, 150);
-            setTimeout(colorButtons, 400);
-            setTimeout(colorButtons, 800);
-            setTimeout(colorButtons, 1500);
+            setTimeout(colorButtons, 100);
+            setTimeout(colorButtons, 300);
+            setTimeout(colorButtons, 600);
+            setTimeout(colorButtons, 1000);
+            setTimeout(colorButtons, 2000);
             try {{
                 const observer = new MutationObserver(colorButtons);
                 observer.observe(window.parent.document.body, {{childList: true, subtree: true}});
-                setTimeout(function() {{ observer.disconnect(); }}, 10000);
+                setTimeout(function() {{ observer.disconnect(); }}, 15000);
             }} catch(e) {{}}
         }})();
         </script>
         """
-        html(color_js, height=0)
+        html(color_js, height=0, key=f"kahoot_colors_q{current_q_idx_game}")
     else:
         st.info("✅ Você já respondeu esta pergunta. Aguarde a próxima.")
         time.sleep(2)
