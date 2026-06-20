@@ -917,7 +917,23 @@ def render_teacher_game_control():
         st.rerun()
         return
 
-    # Ranking no sidebar (item 5)
+    # Ranking no sidebar (item 5) — força expansão via JS
+    st.components.v1.html("""
+    <script>
+    (function() {
+        const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+        if (sidebar) {
+            sidebar.setAttribute('aria-expanded', 'true');
+            sidebar.style.width = '';
+            sidebar.style.display = '';
+        }
+        const main = window.parent.document.querySelector('[data-testid="stAppViewContainer"]');
+        if (main) {
+            main.setAttribute('data-sidebar-state', 'expanded');
+        }
+    })();
+    </script>
+    """, height=0)
     with st.sidebar:
         render_current_ranking(current_game)
 

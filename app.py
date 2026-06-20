@@ -161,6 +161,8 @@ _GLOBAL_CSS = """<style>
     [data-testid="stHeader"] { background: transparent !important; height: 2.5rem !important; }
     [data-testid="stHeader"] [data-testid="stActionButtonIcon"], [data-testid="stHeader"] a, .stDeployButton, [data-testid="stToolbar"] { display: none !important; }
     [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] { display: none !important; }
+    [data-testid="stSidebar"] { min-width: 280px !important; width: 280px !important; transform: none !important; }
+    [data-testid="stSidebar"][aria-expanded="false"] { transform: none !important; margin-left: 0 !important; width: 280px !important; min-width: 280px !important; }
     .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; }
 </style>"""
 
