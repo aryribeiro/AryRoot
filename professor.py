@@ -939,19 +939,20 @@ def render_teacher_game_control():
 
     st.markdown("<h1 class='title' style='font-size:2rem;'>🎮 Controle do Jogo</h1>", unsafe_allow_html=True)
 
-    # Botão voltar
-    if st.button("Voltar ao painel", key="back_to_dashboard"):
-        navigate_to("teacher_dashboard")
-        st.rerun()
-
-    # Código do jogo centralizado
-    st.markdown(
-        f"<div style='text-align:center;margin:10px 0;'>"
-        f"<span style='font-size:1.5rem;font-weight:bold;'>🔒 Código: </span>"
-        f"<code style='font-size:1.5rem;background:#f0f0f0;padding:4px 12px;border-radius:6px;'>{current_game.code}</code>"
-        f"</div>",
-        unsafe_allow_html=True
-    )
+    # Botão voltar + Código na mesma linha
+    col_back, col_code = st.columns([1, 2])
+    with col_back:
+        if st.button("Voltar ao painel", key="back_to_dashboard"):
+            navigate_to("teacher_dashboard")
+            st.rerun()
+    with col_code:
+        st.markdown(
+            f"<div style='text-align:center;'>"
+            f"<span style='font-size:1.5rem;font-weight:bold;'>🔒 Código: </span>"
+            f"<code style='font-size:1.5rem;background:#f0f0f0;padding:4px 12px;border-radius:6px;'>{current_game.code}</code>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
 
     # Ações do jogo
     render_game_control_actions(current_game)
@@ -1061,8 +1062,6 @@ def finish_game_operation(game):
 
 def render_game_info(current_game):
     """Renderiza informações do jogo"""
-    st.divider()
-
     if current_game.status == "waiting":
         render_waiting_players(current_game)
     elif current_game.status == "active":
@@ -1073,7 +1072,7 @@ def render_game_info(current_game):
 
 def render_waiting_players(game):
     """Renderiza lista de jogadores esperando"""
-    st.subheader("Jogadores na sala:")
+    st.markdown("<h3 style='text-align:center;'>Jogadores na sala:</h3>", unsafe_allow_html=True)
     
     if not game.players:
         st.info("Nenhum jogador entrou.")
