@@ -313,7 +313,7 @@ def render_student_home():
         unsafe_allow_html=True
     )
 
-    # CSS local para emojis maiores + forçar 5 colunas no mobile
+    # CSS local para emojis maiores (mobile grid é tratado via JS no app.py)
     st.markdown("""<style>
     [data-testid="stVerticalBlockBorderWrapper"] button {
         font-size: 2.2rem !important;
@@ -325,22 +325,6 @@ def render_student_home():
     [data-testid="stVerticalBlockBorderWrapper"] button:hover {
         background-color: #e8f4fd !important;
         transform: scale(1.1);
-    }
-    @media (max-width: 768px) {
-        [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] {
-            flex-wrap: nowrap !important;
-            gap: 2px !important;
-        }
-        [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
-            min-width: 0 !important;
-            flex: 1 !important;
-            width: 20% !important;
-        }
-        [data-testid="stVerticalBlockBorderWrapper"] button {
-            font-size: 1.8rem !important;
-            min-height: 40px !important;
-            padding: 2px !important;
-        }
     }
     </style>""", unsafe_allow_html=True)
 

@@ -30,6 +30,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+st.markdown('<meta name="theme-color" content="#46178F">', unsafe_allow_html=True)
+
 # ==================== ADVANCED HEALTH CHECK ====================
 class AdvancedHealthCheck:
     """Health check com métricas detalhadas - FIXED: integração com circuit breaker"""
@@ -177,18 +179,28 @@ _GLOBAL_JS = """
 (function() {
     const doc = window.parent.document;
 
-    // Meta theme-color roxo (barra status mobile)
-    var existing = doc.querySelectorAll('meta[name="theme-color"]');
-    existing.forEach(function(el) { el.remove(); });
-    if (!doc.getElementById('aryroot-theme-color')) {
-        const meta = doc.createElement('meta');
-        meta.id = 'aryroot-theme-color';
+    // Meta theme-color roxo (barra status mobile) — injeta em TODOS os níveis
+    [doc, document].forEach(function(d) {
+        var ex = d.querySelectorAll('meta[name="theme-color"]');
+        ex.forEach(function(el) { el.remove(); });
+        var meta = d.createElement('meta');
         meta.name = 'theme-color';
         meta.content = '#46178F';
-        doc.head.insertBefore(meta, doc.head.firstChild);
-    }
+        d.head.insertBefore(meta, d.head.firstChild);
+    });
+    try {
+        var topDoc = window.top.document;
+        if (topDoc !== doc && topDoc !== document) {
+            var ex2 = topDoc.querySelectorAll('meta[name="theme-color"]');
+            ex2.forEach(function(el) { el.remove(); });
+            var meta2 = topDoc.createElement('meta');
+            meta2.name = 'theme-color';
+            meta2.content = '#46178F';
+            topDoc.head.insertBefore(meta2, topDoc.head.firstChild);
+        }
+    } catch(e) {}
 
-    // Scrollbar roxa global
+    // Scrollbar roxa global + forçar 5 colunas emojis no mobile
     if (!doc.getElementById('aryroot-scrollbar-css')) {
         const style = doc.createElement('style');
         style.id = 'aryroot-scrollbar-css';
@@ -197,6 +209,18 @@ _GLOBAL_JS = """
             *::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
             *::-webkit-scrollbar-thumb { background-color: #46178F !important; border-radius: 4px !important; }
             *::-webkit-scrollbar-track { background: #f0f0f0 !important; border-radius: 4px !important; }
+            @media (max-width: 768px) {
+                [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] {
+                    flex-wrap: nowrap !important;
+                    flex-direction: row !important;
+                    gap: 2px !important;
+                }
+                [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+                    min-width: 0 !important;
+                    flex: 1 1 20% !important;
+                    width: 20% !important;
+                }
+            }
         `;
         doc.head.appendChild(style);
     }
