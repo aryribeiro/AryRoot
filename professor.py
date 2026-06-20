@@ -563,28 +563,23 @@ def render_add_question_form():
     
     with st.form(key=form_key, clear_on_submit=True):
         question_text = st.text_area("Texto da pergunta", key=f"q_text_{form_key}")
-        
+
         # Inputs para as 4 opções
         options_inputs = []
         for k in range(4):
             option_input = st.text_input(f"Opção {k+1}", key=f"q_opt_{k}_{form_key}")
             options_inputs.append(option_input)
-        
-        # Radio button para resposta correta
-        def format_option_label(idx):
-            current_value = st.session_state.get(f"q_opt_{idx}_{form_key}", "").strip()
-            return current_value if current_value else f"Opção {idx + 1}"
-        
-        correct_index = st.radio(
+
+        # Selectbox para resposta correta (mais confiável que radio dentro de form)
+        correct_index = st.selectbox(
             "Resposta correta",
-            options=list(range(4)),
-            format_func=format_option_label,
-            horizontal=True,
-            key=f"q_radio_{form_key}"
+            options=[0, 1, 2, 3],
+            format_func=lambda idx: f"Opção {idx + 1}",
+            key=f"q_correct_{form_key}"
         )
-        
+
         submitted = st.form_submit_button("Adicionar pergunta", use_container_width=True)
-        
+
         if submitted:
             add_new_question(question_text, options_inputs, correct_index, form_key)
 
@@ -740,20 +735,16 @@ def render_edit_question_form():
             edited_option = st.text_input(f"Opção {i+1}", value=option_value)
             edited_options.append(edited_option)
         
-        # Radio para resposta correta
+        # Selectbox para resposta correta
         default_correct = q_data.get("correct", 0)
         if not (0 <= default_correct < 4):
             default_correct = 0
-        
-        def format_edit_option_label(idx):
-            return edited_options[idx].strip() if edited_options[idx].strip() else f"Opção {idx + 1}"
-        
-        edited_correct_index = st.radio(
+
+        edited_correct_index = st.selectbox(
             "Resposta correta",
-            options=list(range(4)),
-            format_func=format_edit_option_label,
-            index=default_correct,
-            horizontal=True
+            options=[0, 1, 2, 3],
+            format_func=lambda idx: f"Opção {idx + 1}: {edited_options[idx].strip() or '...'}" ,
+            index=default_correct
         )
         
         col1, col2 = st.columns(2)
