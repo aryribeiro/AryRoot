@@ -128,9 +128,11 @@ health_check = AdvancedHealthCheck()
 # ==================== CSS GLOBAL (constante, injetado uma vez por rerun) ====================
 _GLOBAL_CSS = """<style>
     .main { background: linear-gradient(to bottom, #e0f7fa, #ffffff); padding: 20px; }
-    .stButton > button { background-color: #4CAF50; color: white; font-weight: bold; border-radius: 12px; padding: 12px 24px; border: none; box-shadow: 0 4px 8px rgba(0,0,0,0.1); transition: all 0.3s ease; cursor: pointer; }
-    .stButton > button:hover { background-color: #45a049; box-shadow: 0 6px 12px rgba(0,0,0,0.15); transform: translateY(-2px); }
-    .stButton > button:disabled { background-color: #cccccc; cursor: not-allowed; transform: none; }
+    button[data-testid="stBaseButton-primary"], button[kind="primary"] { background-color: #4CAF50 !important; color: white !important; font-weight: bold; border-radius: 12px; padding: 12px 24px; border: none !important; box-shadow: 0 4px 8px rgba(0,0,0,0.1); transition: all 0.3s ease; cursor: pointer; }
+    button[data-testid="stBaseButton-primary"]:hover, button[kind="primary"]:hover { background-color: #45a049 !important; box-shadow: 0 6px 12px rgba(0,0,0,0.15); transform: translateY(-2px); }
+    .stButton > button:disabled { background-color: #cccccc !important; cursor: not-allowed; transform: none; }
+    button[data-testid="stBaseButton-secondary"], button[kind="secondary"] { background-color: white !important; color: #333 !important; border: 1px solid #ddd !important; border-radius: 10px; padding: 8px 16px; transition: all 0.2s ease; }
+    button[data-testid="stBaseButton-secondary"]:hover, button[kind="secondary"]:hover { background-color: #f5f5f5 !important; }
     .title { color: #2E7D32; text-align: center; font-size: 3.5rem; margin-bottom: 2rem; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
     .connection-status { position: fixed; top: 10px; right: 10px; z-index: 9999; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; color: white; }
     .status-healthy { background-color: #4CAF50; }

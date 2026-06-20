@@ -311,37 +311,34 @@ def render_student_home():
         unsafe_allow_html=True
     )
 
-    # CSS override para botões de emoji (sem fundo verde)
+    # CSS local para emojis maiores (só dentro do container de emojis)
     st.markdown("""<style>
-    [data-testid="stVerticalBlockBorderWrapper"] .stButton > button {
-        background-color: transparent !important;
-        border: 1px solid #ddd !important;
-        border-radius: 10px !important;
-        padding: 6px !important;
+    [data-testid="stVerticalBlockBorderWrapper"] button {
         font-size: 2.2rem !important;
-        min-height: 52px !important;
-        box-shadow: none !important;
-        color: inherit !important;
-        transition: transform 0.15s ease !important;
+        min-height: 50px !important;
+        padding: 4px !important;
+        background-color: transparent !important;
+        border: 1px solid #e8e8e8 !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] .stButton > button:hover {
-        background-color: #f0f0f0 !important;
-        transform: scale(1.15) !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    [data-testid="stVerticalBlockBorderWrapper"] button:hover {
+        background-color: #e8f4fd !important;
+        transform: scale(1.1);
     }
     </style>""", unsafe_allow_html=True)
 
-    # Emojis em grid 4 colunas com scroll vertical
-    emoji_container = st.container(height=260)
+    # Emojis em grid 5 colunas com scroll vertical
+    emoji_container = st.container(height=280)
     with emoji_container:
-        num_cols = 4
+        num_cols = 5
         rows = [PLAYER_ICONS[i:i+num_cols] for i in range(0, len(PLAYER_ICONS), num_cols)]
         for row in rows:
             cols = st.columns(num_cols)
             for idx, icon in enumerate(row):
                 with cols[idx]:
                     global_idx = PLAYER_ICONS.index(icon)
-                    st.button(icon, key=f"icon_{global_idx}", on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}))
+                    st.button(icon, key=f"icon_{global_idx}",
+                              on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
+                              type="secondary")
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
@@ -349,7 +346,7 @@ def render_student_home():
     # Debounce no botão de entrada
     button_id = "join_game_btn"
 
-    if st.button("Entrar", disabled=not can_join, key=button_id):
+    if st.button("Entrar", disabled=not can_join, key=button_id, type="primary"):
         if not button_debouncer.is_allowed(button_id):
             st.warning("Por favor, aguarde antes de tentar novamente.")
             return
