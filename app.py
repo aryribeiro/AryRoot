@@ -156,9 +156,10 @@ _GLOBAL_CSS = """<style>
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
     .loading-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 20px auto; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    header { display: none !important; }
-    footer { display: none !important; }
+    header [data-testid="stHeader"] { background: transparent !important; }
     #MainMenu { display: none !important; }
+    footer { display: none !important; }
+    header .stDeployButton { display: none !important; }
     .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; }
 </style>"""
 
