@@ -1,16 +1,15 @@
 # professor.py - FIXED VERSION
 import streamlit as st
-from core import Teacher, Game, generate_game_code, SAMPLE_QUESTIONS, teacher_cache
+from core import Teacher, Game, generate_game_code, SAMPLE_QUESTIONS
 import bcrypt
 import json
-import os
+import html as html_module
 import random
 import time
 import threading
 from datetime import datetime
 from typing import Optional, Any, Dict
 import logging
-import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -381,9 +380,7 @@ def render_regular_teacher_actions():
         logout_user()
 
 def create_new_game():
-    """Cria um novo jogo com idempotência"""
-    operation_id = f"create_game:{st.session_state.username}:{uuid.uuid4()}"
-    
+    """Cria um novo jogo"""
     def game_creation():
         game_code = generate_game_code()
         # Garantir código único
@@ -944,7 +941,7 @@ def render_teacher_game_control():
     
     # Auto-refresh para jogos ativos
     if current_game and current_game.status in ["waiting", "active"]:
-        time.sleep(3)
+        time.sleep(2)
         st.rerun()
 
 def render_game_control_actions(current_game):
@@ -1051,10 +1048,11 @@ def render_waiting_players(game):
         for i, (player_name, player_data) in enumerate(players_list):
             with player_cols[i % 3]:
                 icon = player_data.get('icon', '❓') if isinstance(player_data, dict) else '❓'
+                safe_name = html_module.escape(player_name)
                 st.markdown(
                     f"<div style='text-align:center; padding:10px; margin:5px; "
                     f"background-color:#e0f7fa; border-radius:10px;'>"
-                    f"<span style='font-size:2rem;'>{icon}</span><br>{player_name}</div>",
+                    f"<span style='font-size:2rem;'>{icon}</span><br>{safe_name}</div>",
                     unsafe_allow_html=True
                 )
 
@@ -1112,9 +1110,9 @@ def render_current_ranking(game):
                 bg, border = '#f9f9f9', '#eee'
             
             icon = player_info.get('icon', '❓')
-            name = player_info.get('name', 'Unknown')
+            name = html_module.escape(player_info.get('name', 'Unknown'))
             score = player_info.get('score', 0)
-            
+
             st.markdown(
                 f"""<div style='display:flex;align-items:center;padding:8px;margin-bottom:5px;
                 background-color:{bg};border-radius:8px;border:1px solid {border};

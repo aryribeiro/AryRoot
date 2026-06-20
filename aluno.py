@@ -5,7 +5,7 @@ from core import Game, PLAYER_ICONS, game_cache
 from streamlit.components.v1 import html
 import os
 import uuid
-from datetime import datetime
+import html as html_module
 import threading
 import logging
 
@@ -137,7 +137,32 @@ def resilient_game_operation(func, max_retries=3):
         st.error(f"Erro de conexão. Por favor, tente novamente.")
     return None
 
-# Script JavaScript otimizado
+# ==================== STATIC ASSETS (defined once at module level) ====================
+_RESULTS_CSS = """<style>
+audio { display: none; }
+.podium-container { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-bottom: 40px; margin-top: 20px; height: 280px; width: 100%; }
+.podium-place { text-align: center; color: white; border-radius: 10px; padding: 15px 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.25); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; transition: transform 0.2s ease-in-out; }
+.podium-place:hover { transform: translateY(-5px); }
+.podium-icon { font-size: 3rem; margin-bottom: 8px; line-height: 1; }
+.podium-name { font-size: 1.1rem; font-weight: bold; margin-bottom: 5px; word-break: break-word; }
+.podium-score { font-size: 0.9rem; }
+.first-place { background: linear-gradient(to bottom, #ffd700, #f0c14b); height: 260px; width: 160px; z-index: 3; order: 2; }
+.second-place { background: linear-gradient(to bottom, #c0c0c0, #a8a8a8); height: 220px; width: 140px; z-index: 2; order: 1; }
+.third-place { background: linear-gradient(to bottom, #cd7f32, #b87333); height: 180px; width: 120px; z-index: 1; order: 3; }
+.custom-ranking-table-container { display: flex; justify-content: center; margin-top: 20px; margin-bottom: 30px; }
+.custom-ranking-table { width: 100%; max-width: 650px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-radius: 10px; overflow: hidden; }
+.custom-ranking-table th, .custom-ranking-table td { border: none; border-bottom: 1px solid #e8e8e8; padding: 12px 15px; text-align: center; font-size: 0.95rem; vertical-align: middle; }
+.custom-ranking-table tr:last-child td { border-bottom: none; }
+.custom-ranking-table th { background-color: #2E7D32; color: white; font-weight: 600; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.custom-ranking-table tr:nth-child(even) { background-color: #f9f9f9; }
+.custom-ranking-table tr.current-player-row td { background-color: #e0f7fa !important; font-weight: bold; }
+.custom-ranking-table .medal-icon { font-size: 1.2rem; margin-right: 3px; }
+.custom-ranking-table td:nth-child(2) { text-align: left; padding-left: 25px; }
+.custom-ranking-table th:nth-child(1), .custom-ranking-table td:nth-child(1) { width: 15%; }
+.custom-ranking-table th:nth-child(2), .custom-ranking-table td:nth-child(2) { width: 60%; }
+.custom-ranking-table th:nth-child(3), .custom-ranking-table td:nth-child(3) { width: 25%; }
+</style>"""
+
 silent_audio_script = """
 <script>
 (function() {
@@ -328,15 +353,16 @@ def render_waiting_room():
                 for i, (player_name, player_data) in enumerate(players_list):
                     with player_cols[i % 3]:
                         icon = player_data.get('icon', '❓') if isinstance(player_data, dict) else '❓'
+                        safe_name = html_module.escape(player_name)
                         st.markdown(
                             f"<div style='text-align:center; padding:10px; margin:5px; "
                             f"background-color:#e0f7fa; border-radius:10px;'>"
-                            f"<span style='font-size:2rem;'>{icon}</span><br>{player_name}</div>",
+                            f"<span style='font-size:2rem;'>{icon}</span><br>{safe_name}</div>",
                             unsafe_allow_html=True
                         )
 
-    # Auto-refresh com intervalo maior
-    time.sleep(3)
+    # Auto-refresh
+    time.sleep(2)
     st.rerun()
 
 def render_game():
@@ -386,9 +412,9 @@ def render_game():
                 table_html = "<div class='custom-ranking-table-container'><table class='custom-ranking-table'>"
                 table_html += "<thead><tr><th>Pos.</th><th>Jogador</th><th>Pontos</th></tr></thead><tbody>"
                 
-                for i, player_rank_info in enumerate(ranking[:10]): 
+                for i, player_rank_info in enumerate(ranking[:10]):
                     icon = player_rank_info.get('icon', '❓')
-                    name = player_rank_info.get('name', 'Unknown')
+                    name = html_module.escape(player_rank_info.get('name', 'Unknown'))
                     score = player_rank_info.get('score', 0)
                     table_html += f"<tr><td>{i+1}</td><td>{icon} {name}</td><td>{score}</td></tr>"
                 
@@ -538,7 +564,7 @@ def render_game():
         st.markdown(f"<style>{css_options}</style>", unsafe_allow_html=True)
     else:
         st.info("✅ Você já respondeu esta pergunta. Aguarde a próxima.")
-        time.sleep(3) 
+        time.sleep(2)
         st.rerun()
 
 def render_game_results():
@@ -569,39 +595,14 @@ def render_game_results():
             None
         )
 
-        # CSS para resultados
-        st.markdown("""
-        <style> 
-        audio { display: none; }
-        .podium-container { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-bottom: 40px; margin-top: 20px; height: 280px; width: 100%; }
-        .podium-place { text-align: center; color: white; border-radius: 10px; padding: 15px 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.25); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; transition: transform 0.2s ease-in-out; }
-        .podium-place:hover { transform: translateY(-5px); }
-        .podium-icon { font-size: 3rem; margin-bottom: 8px; line-height: 1; }
-        .podium-name { font-size: 1.1rem; font-weight: bold; margin-bottom: 5px; word-break: break-word; }
-        .podium-score { font-size: 0.9rem; }
-        .first-place { background: linear-gradient(to bottom, #ffd700, #f0c14b); height: 260px; width: 160px; z-index: 3; order: 2; }
-        .second-place { background: linear-gradient(to bottom, #c0c0c0, #a8a8a8); height: 220px; width: 140px; z-index: 2; order: 1; }
-        .third-place { background: linear-gradient(to bottom, #cd7f32, #b87333); height: 180px; width: 120px; z-index: 1; order: 3; }
-        .custom-ranking-table-container { display: flex; justify-content: center; margin-top: 20px; margin-bottom: 30px; }
-        .custom-ranking-table { width: 100%; max-width: 650px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-radius: 10px; overflow: hidden; }
-        .custom-ranking-table th, .custom-ranking-table td { border: none; border-bottom: 1px solid #e8e8e8; padding: 12px 15px; text-align: center; font-size: 0.95rem; vertical-align: middle; }
-        .custom-ranking-table tr:last-child td { border-bottom: none; }
-        .custom-ranking-table th { background-color: #2E7D32; color: white; font-weight: 600; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; }
-        .custom-ranking-table tr:nth-child(even) { background-color: #f9f9f9; }
-        .custom-ranking-table tr.current-player-row td { background-color: #e0f7fa !important; font-weight: bold; }
-        .custom-ranking-table .medal-icon { font-size: 1.2rem; margin-right: 3px; }
-        .custom-ranking-table td:nth-child(2) { text-align: left; padding-left: 25px; }
-        .custom-ranking-table th:nth-child(1), .custom-ranking-table td:nth-child(1) { width: 15%; } 
-        .custom-ranking-table th:nth-child(2), .custom-ranking-table td:nth-child(2) { width: 60%; }
-        .custom-ranking-table th:nth-child(3), .custom-ranking-table td:nth-child(3) { width: 25%; }
-        </style>
-        """, unsafe_allow_html=True)
+        st.markdown(_RESULTS_CSS, unsafe_allow_html=True)
 
         # Parabenização para estudantes
         if st.session_state.user_type == "student" and player_position and player_name_for_results:
+            safe_player_name = html_module.escape(player_name_for_results)
             st.markdown(
                 f"<p style='text-align:center; font-size:1.5rem; color:#2E7D32; margin-bottom: 10px;'>"
-                f"Parabéns, {player_name_for_results}! Você ficou em {player_position}º lugar!</p>",
+                f"Parabéns, {safe_player_name}! Você ficou em {player_position}º lugar!</p>",
                 unsafe_allow_html=True
             )
             
@@ -634,7 +635,7 @@ def render_game_results():
                 if podium_entry:
                     player_info = podium_entry['player']
                     icon = player_info.get('icon', '❓')
-                    name = player_info.get('name', 'Unknown')
+                    name = html_module.escape(player_info.get('name', 'Unknown'))
                     score = player_info.get('score', 0)
                     podium_html += (
                         f"<div class='podium-place {podium_entry['class']}'>"
@@ -674,12 +675,12 @@ def render_game_results():
                 row_class = "current-player-row" if is_current_player_student else ""
                 
                 icon = player_info_rank.get('icon', '❓')
-                name = player_info_rank.get('name', 'Unknown')
+                name = html_module.escape(player_info_rank.get('name', 'Unknown'))
                 score = player_info_rank.get('score', 0)
-                
+
                 table_html_ranking += f"<tr class='{row_class}'>"
                 table_html_ranking += f"<td>{i_rank_table+1} {medal}</td>"
-                table_html_ranking += f"<td>{icon} {name}</td>" 
+                table_html_ranking += f"<td>{icon} {name}</td>"
                 table_html_ranking += f"<td>{score}</td></tr>"
         
         table_html_ranking += "</tbody></table></div>"

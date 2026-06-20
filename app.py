@@ -125,193 +125,60 @@ class AdvancedHealthCheck:
 # Instância global do health check
 health_check = AdvancedHealthCheck()
 
-# ==================== CSS OTIMIZADO ====================
-st.markdown("""
-<style>
-    .main {
-        background: linear-gradient(to bottom, #e0f7fa, #ffffff);
-        padding: 20px;
-    }
-    .stButton > button {
-        background-color: #4CAF50;
-        color: white;
-        font-weight: bold;
-        border-radius: 12px;
-        padding: 12px 24px;
-        border: none;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        transition: all 0.3s ease;
-        cursor: pointer;
-    }
-    .stButton > button:hover {
-        background-color: #45a049;
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        transform: translateY(-2px);
-    }
-    .stButton > button:disabled {
-        background-color: #cccccc;
-        cursor: not-allowed;
-        transform: none;
-    }
-    .title {
-        color: #2E7D32;
-        text-align: center;
-        font-size: 3.5rem;
-        margin-bottom: 2rem;
-        font-weight: bold;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-    }
-    .connection-status {
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        z-index: 9999;
-        padding: 5px 10px;
-        border-radius: 15px;
-        font-size: 12px;
-        font-weight: bold;
-        color: white;
-    }
-    .status-healthy {
-        background-color: #4CAF50;
-    }
-    .status-degraded {
-        background-color: #FF9800;
-    }
-    .status-unhealthy {
-        background-color: #F44336;
-    }
-    .question-number {
-        text-align: center;
-        font-size: 1.5rem;
-        margin-bottom: 1rem;
-        color: #555;
-    }
-    .question-text {
-        font-size: 2rem;
-        text-align: center;
-        margin-bottom: 2rem;
-        font-weight: bold;
-        line-height: 1.3;
-    }
-    .result-correct {
-        color: #2E7D32;
-        font-size: 2rem;
-        text-align: center;
-        margin-top: 1rem;
-        animation: bounce 0.6s ease-in-out;
-    }
-    .result-incorrect {
-        color: #C62828;
-        font-size: 2rem;
-        text-align: center;
-        margin-top: 1rem;
-        animation: shake 0.6s ease-in-out;
-    }
-    .countdown {
-        font-size: 4rem;
-        text-align: center;
-        color: #2E7D32;
-        font-weight: bold;
-        animation: pulse 1s ease-in-out infinite;
-    }
-    .custom-ranking-table-container {
-        display: flex;
-        justify-content: center;
-        margin-top: 20px;
-        margin-bottom: 30px;
-    }
-    .custom-ranking-table {
-        width: 100%;
-        max-width: 650px;
-        border-collapse: collapse;
-        background-color: #ffffff;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-        border-radius: 10px;
-        overflow: hidden;
-    }
-    .custom-ranking-table th, .custom-ranking-table td {
-        border: none;
-        border-bottom: 1px solid #e8e8e8;
-        padding: 12px 15px;
-        text-align: center;
-        font-size: 0.95rem;
-        vertical-align: middle;
-    }
-    .custom-ranking-table tr:last-child td {
-        border-bottom: none;
-    }
-    .custom-ranking-table th {
-        background-color: #2E7D32;
-        color: white;
-        font-weight: 600;
-        font-size: 1rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .custom-ranking-table tr:nth-child(even) {
-        background-color: #f9f9f9;
-    }
-    .custom-ranking-table tr.current-player-row td {
-        background-color: #e0f7fa !important;
-        font-weight: bold;
-    }
-    .stApp .block-container {
-        margin-left: auto;
-        margin-right: auto;
-        max-width: 900px;
-    }
-    @keyframes bounce {
-        0%, 20%, 60%, 100% { transform: translateY(0); }
-        40% { transform: translateY(-20px); }
-        80% { transform: translateY(-10px); }
-    }
-    @keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
-        20%, 40%, 60%, 80% { transform: translateX(10px); }
-    }
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-        100% { transform: scale(1); }
-    }
-    .loading-spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #3498db;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        animation: spin 2s linear infinite;
-        margin: 20px auto;
-    }
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    header {display: none !important;}
-    footer {display: none !important;}
-    #MainMenu {display: none !important;}
-    .reportview-container .main .block-container,
-    .block-container {
-        padding-top: 0rem !important;
-        padding-bottom: 0rem !important;
-        margin-bottom: 0rem !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+# ==================== CSS GLOBAL (constante, injetado uma vez por rerun) ====================
+_GLOBAL_CSS = """<style>
+    .main { background: linear-gradient(to bottom, #e0f7fa, #ffffff); padding: 20px; }
+    .stButton > button { background-color: #4CAF50; color: white; font-weight: bold; border-radius: 12px; padding: 12px 24px; border: none; box-shadow: 0 4px 8px rgba(0,0,0,0.1); transition: all 0.3s ease; cursor: pointer; }
+    .stButton > button:hover { background-color: #45a049; box-shadow: 0 6px 12px rgba(0,0,0,0.15); transform: translateY(-2px); }
+    .stButton > button:disabled { background-color: #cccccc; cursor: not-allowed; transform: none; }
+    .title { color: #2E7D32; text-align: center; font-size: 3.5rem; margin-bottom: 2rem; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
+    .connection-status { position: fixed; top: 10px; right: 10px; z-index: 9999; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; color: white; }
+    .status-healthy { background-color: #4CAF50; }
+    .status-degraded { background-color: #FF9800; }
+    .status-unhealthy { background-color: #F44336; }
+    .question-number { text-align: center; font-size: 1.5rem; margin-bottom: 1rem; color: #555; }
+    .question-text { font-size: 2rem; text-align: center; margin-bottom: 2rem; font-weight: bold; line-height: 1.3; }
+    .result-correct { color: #2E7D32; font-size: 2rem; text-align: center; margin-top: 1rem; animation: bounce 0.6s ease-in-out; }
+    .result-incorrect { color: #C62828; font-size: 2rem; text-align: center; margin-top: 1rem; animation: shake 0.6s ease-in-out; }
+    .countdown { font-size: 4rem; text-align: center; color: #2E7D32; font-weight: bold; animation: pulse 1s ease-in-out infinite; }
+    .custom-ranking-table-container { display: flex; justify-content: center; margin-top: 20px; margin-bottom: 30px; }
+    .custom-ranking-table { width: 100%; max-width: 650px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-radius: 10px; overflow: hidden; }
+    .custom-ranking-table th, .custom-ranking-table td { border: none; border-bottom: 1px solid #e8e8e8; padding: 12px 15px; text-align: center; font-size: 0.95rem; vertical-align: middle; }
+    .custom-ranking-table tr:last-child td { border-bottom: none; }
+    .custom-ranking-table th { background-color: #2E7D32; color: white; font-weight: 600; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .custom-ranking-table tr:nth-child(even) { background-color: #f9f9f9; }
+    .custom-ranking-table tr.current-player-row td { background-color: #e0f7fa !important; font-weight: bold; }
+    .stApp .block-container { margin-left: auto; margin-right: auto; max-width: 900px; }
+    @keyframes bounce { 0%, 20%, 60%, 100% { transform: translateY(0); } 40% { transform: translateY(-20px); } 80% { transform: translateY(-10px); } }
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); } 20%, 40%, 60%, 80% { transform: translateX(10px); } }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+    .loading-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 20px auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    header { display: none !important; }
+    footer { display: none !important; }
+    #MainMenu { display: none !important; }
+    .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; }
+</style>"""
+
+st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
 
 # ==================== INICIALIZAÇÃO ====================
+_db_initialized = False
+
 def initialize_database_with_retry(max_retries: int = 3) -> bool:
-    """Inicializar banco com retry e backoff - FIXED"""
+    """Inicializar banco com retry e backoff — runs once per process."""
+    global _db_initialized
+    if _db_initialized:
+        return True
+
     for attempt in range(max_retries):
         try:
             setup_data_directory()
+            _db_initialized = True
             logger.info("Database initialized successfully")
             return True
         except Exception as e:
             logger.error(f"Database init failed (attempt {attempt+1}/{max_retries}): {e}")
-            
             if attempt < max_retries - 1:
                 delay = 1 * (2 ** attempt) + random.uniform(0, 0.5)
                 time.sleep(delay)
@@ -319,7 +186,7 @@ def initialize_database_with_retry(max_retries: int = 3) -> bool:
             else:
                 logger.critical("Failed to initialize database after all retries")
                 return False
-    
+
     return False
 
 def init_session_state():
@@ -452,8 +319,7 @@ def main():
                 "<p>Tentando reconectar...</p></div>",
                 unsafe_allow_html=True
             )
-            time.sleep(5)
-            st.rerun()
+            st.stop()
             return
         
         # Inicializar estado da sessão
@@ -473,9 +339,7 @@ def main():
         # Validar acesso à página
         if not validate_page_access(page):
             logger.warning(f"Unauthorized access attempt to page: {page}")
-            st.warning("Acesso não autorizado. Redirecionando...")
             st.session_state.page = "home"
-            time.sleep(1)
             st.rerun()
             return
         
@@ -497,77 +361,35 @@ def main():
                 render_teacher_signup()
             elif page == "teacher_upload_json": 
                 render_upload_questions_json_page()
-            else: 
+            else:
                 logger.warning(f"Unknown page requested: {page}")
-                st.warning("Página não encontrada. Redirecionando para home...")
                 st.session_state.page = "home"
-                time.sleep(1)
                 st.rerun()
         
         except Exception as page_error:
             logger.error(f"Page rendering error: {page_error}", exc_info=True)
             st.error("Erro temporário na página. Recarregando...")
-            
-            # Incrementar contador de problemas
+
             st.session_state.connection_issues = st.session_state.get("connection_issues", 0) + 1
             health_check.record_request(success=False)
-            
-            # Se muitos erros, redirecionar para home
+
             if st.session_state.connection_issues > 3:
                 logger.warning("Too many connection issues, redirecting to home")
                 st.session_state.page = "home"
                 st.session_state.connection_issues = 0
                 st.error("Muitos problemas de conexão. Retornando ao início.")
-            
-            # Aguardar antes de tentar novamente
-            time.sleep(2)
+
+            time.sleep(1)
             st.rerun()
     
     except Exception as main_error:
         logger.critical(f"Critical application error: {main_error}", exc_info=True)
         health_check.record_request(success=False)
-        st.error("Sistema temporariamente indisponível. Atualizando página...")
-        time.sleep(3)
-        st.rerun()
-
-def resilient_main():
-    """Wrapper para execução resiliente com exponential backoff - FIXED"""
-    max_attempts = 3
-    
-    for attempt in range(max_attempts):
-        try:
-            main()
-            break  # Sucesso, sair do loop
-            
-        except Exception as e:
-            logger.error(f"Main execution error (attempt {attempt+1}/{max_attempts}): {e}")
-            
-            if attempt < max_attempts - 1:
-                # Backoff exponencial com jitter
-                delay = 2 * (2 ** attempt) + random.uniform(0, 1)
-                st.error(f"Problema temporário (tentativa {attempt + 1}/{max_attempts}). Recarregando...")
-                
-                st.markdown(
-                    f"<div style='text-align: center; margin-top: 20px;'>"
-                    f"<div class='loading-spinner'></div>"
-                    f"<p>Aguarde {int(delay)} segundos...</p></div>",
-                    unsafe_allow_html=True
-                )
-                
-                time.sleep(delay)
-                st.rerun()
-            else:
-                # Última tentativa falhou
-                st.error("Sistema temporariamente indisponível. Tente atualizar a pág na manualmente.")
-                st.markdown(
-                    "<div style='text-align: center; margin-top: 50px;'>"
-                    "<div class='loading-spinner'></div>"
-                    "<p>Se o problema persistir, entre em contato com o suporte.</p></div>",
-                    unsafe_allow_html=True
-                )
+        st.error("Sistema temporariamente indisponível. Atualize a página manualmente.")
+        st.stop()
 
 if __name__ == "__main__":
-    resilient_main()
+    main()
 
 # Rodapé com informações de contato
 st.markdown("""

@@ -7,10 +7,9 @@ from datetime import datetime, timedelta
 import bcrypt
 from dotenv import load_dotenv
 import sqlite3
-import streamlit as st
 import time
 import threading
-from typing import Dict, Optional, Any, List, Tuple
+from typing import Dict, Optional, Any, List
 import logging
 from functools import wraps
 import uuid
@@ -27,6 +26,15 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 DATABASE_PATH = "data/database.db"
+
+
+def _get_secret(key: str, default: str = "") -> str:
+    """Read from st.secrets (Streamlit Cloud) with os.getenv fallback (local)."""
+    try:
+        import streamlit as _st
+        return _st.secrets.get(key, os.getenv(key, default))
+    except (FileNotFoundError, AttributeError):
+        return os.getenv(key, default)
 
 # ==================== CIRCUIT BREAKER ====================
 class CircuitState(Enum):
@@ -374,9 +382,9 @@ def setup_data_directory():
         cursor.execute("SELECT COUNT(*) FROM teachers WHERE username = ?", ("professor",))
         if cursor.fetchone()[0] == 0:
             demo_username = "professor"
-            demo_plain_password = os.getenv("DEMO_PROFESSOR_PASSWORD")
-            demo_name = os.getenv("DEMO_PROFESSOR_NAME", "Professor Demo")
-            demo_email = os.getenv("DEMO_PROFESSOR_EMAIL", "professor@demo.com")
+            demo_plain_password = _get_secret("DEMO_PROFESSOR_PASSWORD")
+            demo_name = _get_secret("DEMO_PROFESSOR_NAME", "Professor Demo")
+            demo_email = _get_secret("DEMO_PROFESSOR_EMAIL", "professor@demo.com")
 
             if demo_plain_password:
                 hashed_password = bcrypt.hashpw(demo_plain_password.encode('utf-8'), bcrypt.gensalt())
@@ -435,31 +443,20 @@ class Teacher:
 
     @retry_db_operation()
     def save(self):
-        """Save com write-through cache - FIXED: cache consistency"""
-        operation_id = f"save_teacher:{self.username}:{uuid.uuid4()}"
-        
-        # Check deduplication
-        if dedup_cache.exists(operation_id):
-            logger.info(f"Duplicate save_teacher operation detected: {self.username}")
-            return dedup_cache.get(operation_id)
-        
+        """Save com write-through cache"""
         try:
-            # Use distributed lock
-            with DistributedLock(f"teacher:{self.username}", timeout=5):
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    data = self.to_dict_for_db()
-                    cursor.execute('''
-                    INSERT OR REPLACE INTO teachers (username, password, name, email, questions, updated_at)
-                    VALUES (:username, :password, :name, :email, :questions, :updated_at)
-                    ''', data)
-                
-                # Update cache on success
-                teacher_cache.set(f"teacher:{self.username}", self)
-                dedup_cache.set(operation_id, True)
-                logger.info(f"Teacher saved: {self.username}")
-                return True
-                
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                data = self.to_dict_for_db()
+                cursor.execute('''
+                INSERT OR REPLACE INTO teachers (username, password, name, email, questions, updated_at)
+                VALUES (:username, :password, :name, :email, :questions, :updated_at)
+                ''', data)
+
+            teacher_cache.set(f"teacher:{self.username}", self)
+            logger.info(f"Teacher saved: {self.username}")
+            return True
+
         except Exception as e:
             logger.error(f"Failed to save teacher {self.username}: {e}")
             raise
@@ -704,12 +701,6 @@ class Game:
                         "score": data.get("score", 0)
                     })
             return sorted(ranking, key=lambda x: x["score"], reverse=True)
-
-    def _conditional_save(self):
-        """Salva apenas se passou tempo suficiente"""
-        now = datetime.now()
-        if (now - self._last_save).total_seconds() > 2:
-            self._force_save()
 
     def _force_save(self):
         """Força salvamento imediato"""
