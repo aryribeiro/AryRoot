@@ -624,7 +624,7 @@ class Game:
         if dedup_cache.exists(operation_id):
             result = dedup_cache.get(operation_id)
             logger.info(f"Duplicate answer detected: {player_name}")
-            return result if result else (False, 0, 0)
+            return result if result else (None, 0, 0)
 
         with DistributedLock(f"game:{self.code}:player:{player_name}", timeout=5):
             # Reload fresh state
@@ -635,20 +635,20 @@ class Game:
             if (player_name not in self.players or
                 self.current_question >= len(self.questions) or
                 self.status != "active"):
-                result = (False, 0, 0)
+                result = (None, 0, 0)
                 dedup_cache.set(operation_id, result)
                 return result
 
             # Verificar se já respondeu esta pergunta
             player_data = self.players[player_name]
             if not isinstance(player_data, dict):
-                result = (False, 0, 0)
+                result = (None, 0, 0)
                 dedup_cache.set(operation_id, result)
                 return result
 
             answers = player_data.get("answers", [])
             if any(ans.get("question") == self.current_question for ans in answers):
-                result = (False, 0, 0)
+                result = (None, 0, 0)
                 dedup_cache.set(operation_id, result)
                 return result
 

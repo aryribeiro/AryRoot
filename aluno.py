@@ -631,22 +631,22 @@ def render_game():
                                 player_name_session, i_opt, time_taken
                             )
 
-                            if is_correct is not False:
-                                if is_correct:
-                                    streak_text = f" \U0001f525x{streak}" if streak >= 2 else ""
-                                    st.markdown(
-                                        f"<div class='result-correct'>✓ Correto! +{points} pontos{streak_text}</div>",
-                                        unsafe_allow_html=True
-                                    )
-                                else:
-                                    st.markdown(
-                                        f"<div class='result-incorrect'>✗ Incorreto</div>",
-                                        unsafe_allow_html=True
-                                    )
-                                time.sleep(2)
-                            else:
+                            if is_correct is None:
                                 st.warning("Erro ao registrar resposta. Tente novamente.")
                                 button_debouncer.reset(button_id)
+                            elif is_correct:
+                                streak_text = f" \U0001f525x{streak}" if streak >= 2 else ""
+                                st.markdown(
+                                    f"<div class='result-correct'>✓ Correto! +{points} pontos{streak_text}</div>",
+                                    unsafe_allow_html=True
+                                )
+                                time.sleep(2)
+                            else:
+                                st.markdown(
+                                    f"<div class='result-incorrect'>✗ Incorreto</div>",
+                                    unsafe_allow_html=True
+                                )
+                                time.sleep(2)
 
                         except Exception as e:
                             logger.error(f"Error recording answer: {e}")
