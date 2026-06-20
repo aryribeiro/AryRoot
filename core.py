@@ -366,11 +366,17 @@ def setup_data_directory():
             current_question INTEGER DEFAULT 0,
             start_time TEXT,
             question_start_time TEXT,
+            time_limit INTEGER DEFAULT 20,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (teacher_username) REFERENCES teachers (username)
         )
         ''')
+        # Migração: adicionar time_limit em DBs existentes
+        try:
+            cursor.execute("ALTER TABLE games ADD COLUMN time_limit INTEGER DEFAULT 20")
+        except sqlite3.OperationalError:
+            pass
         
         # Índices compostos para performance
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_games_status ON games(status)')
@@ -520,27 +526,32 @@ class Teacher:
 
 # ==================== GAME MODEL ====================
 class Game:
-    def __init__(self, code, teacher_username, questions_json_str="[]", players_json_str="{}", 
-                 status="waiting", current_question=0, start_time=None, question_start_time=None):
+    def __init__(self, code, teacher_username, questions_json_str="[]", players_json_str="{}",
+                 status="waiting", current_question=0, start_time=None, question_start_time=None,
+                 time_limit=20):
         self.code = code
         self.teacher_username = teacher_username
         self._lock = threading.RLock()
-        
+
         try:
             self.questions = json.loads(questions_json_str) if questions_json_str else []
         except json.JSONDecodeError:
             self.questions = []
-            
+
         try:
             self.players = json.loads(players_json_str) if players_json_str else {}
         except json.JSONDecodeError:
             self.players = {}
-            
-        self.status = status 
+
+        self.status = status
         self.current_question = current_question
         self.start_time = start_time
         self.question_start_time = question_start_time
+        self.time_limit = time_limit if time_limit else 20
         self._last_save = datetime.now()
+
+    def _get_time_limit(self) -> float:
+        return float(self.time_limit)
 
     def to_dict_for_db(self):
         return {
@@ -552,6 +563,7 @@ class Game:
             "current_question": self.current_question,
             "start_time": self.start_time,
             "question_start_time": self.question_start_time,
+            "time_limit": self.time_limit,
             "updated_at": datetime.now().isoformat()
         }
 
@@ -559,9 +571,16 @@ class Game:
     def from_db_row(cls, row):
         if not row:
             return None
+        # time_limit pode não existir em DBs antigos
+        tl = 20
+        try:
+            tl = row["time_limit"] if row["time_limit"] else 20
+        except (IndexError, KeyError):
+            pass
         return cls(
             row["code"], row["teacher_username"], row["questions"], row["players"],
-            row["status"], row["current_question"], row["start_time"], row["question_start_time"]
+            row["status"], row["current_question"], row["start_time"], row["question_start_time"],
+            tl
         )
 
     def add_player(self, nickname, icon):
@@ -668,11 +687,11 @@ class Game:
                 streak += 1  # inclui a resposta atual
 
             # Pontuação Kahoot: base 1000 pontos, time decay linear, streak bonus
-            time_limit = 20.0
+            # Se tempo > limite: ZERO pontos mesmo acertando
+            time_limit = self._get_time_limit()
             points = 0
-            if is_correct:
+            if is_correct and time_taken <= time_limit:
                 # Fórmula Kahoot: pontos = base * (1 - (time / limit) / 2)
-                # Resultado: resposta instantânea = 1000, no limite = 500
                 time_factor = 1.0 - (min(time_taken, time_limit) / time_limit) / 2.0
                 base_points = int(1000 * time_factor)
                 base_points = max(500, base_points)
@@ -743,12 +762,11 @@ class Game:
                 cursor = conn.cursor()
                 data = self.to_dict_for_db()
                 cursor.execute('''
-                INSERT OR REPLACE INTO games 
-                (code, teacher_username, questions, players, status, current_question, start_time, question_start_time, updated_at)
-                VALUES (:code, :teacher_username, :questions, :players, :status, :current_question, :start_time, :question_start_time, :updated_at)
+                INSERT OR REPLACE INTO games
+                (code, teacher_username, questions, players, status, current_question, start_time, question_start_time, time_limit, updated_at)
+                VALUES (:code, :teacher_username, :questions, :players, :status, :current_question, :start_time, :question_start_time, :time_limit, :updated_at)
                 ''', data)
-            
-            # Update cache on success
+
             game_cache.set(f"game:{self.code}", self)
         except Exception as e:
             logger.error(f"Failed to save game {self.code}: {e}")
@@ -940,4 +958,14 @@ SAMPLE_QUESTIONS = [
   }
 ]
 
-PLAYER_ICONS = ["😀", "😎", "🤖", "👻", "🦄", "🐱", "🐶", "🦊", "🐼", "🐯", "🦁", "🐸", "🐙", "🦋", "🦜", "💩", "🤔", "🧐", "😡", "🤩", "🤯", "🥶", "👹", "🤡", "👽", "💀", "👦🏼", "👩🏼", "🎃", "👦🏿", "👩🏿", "🧙", "🐺", "🐰", "🐭"]
+PLAYER_ICONS = [
+    "😀", "😎", "🤖", "👻", "🦄", "🐱", "🐶", "🦊", "🐼", "🐯",
+    "🦁", "🐸", "🐙", "🦋", "🦜", "💩", "🤔", "🧐", "😡", "🤩",
+    "🤯", "🥶", "👹", "🤡", "👽", "💀", "👦🏼", "👩🏼", "🎃", "👦🏿",
+    "👩🏿", "🧙", "🐺", "🐰", "🐭", "🐹", "🐻", "🐨", "🐮", "🐷",
+    "🐵", "🐔", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇", "🐝",
+    "🐛", "🦀", "🐠", "🐬", "🐳", "🦈", "🐊", "🐢", "🦎", "🐍",
+    "🦕", "🦖", "🐘", "🦏", "🦛", "🐪", "🦒", "🦘", "🦡", "🐿️",
+    "🦔", "🦦", "🦥", "🦫", "🧛", "🧟", "🧞", "🧜", "🧚", "🦸",
+    "🦹", "🥷", "🎅", "🤴", "👸", "🤠", "🥸", "😈", "👾", "🫠",
+]

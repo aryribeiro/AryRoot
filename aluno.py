@@ -303,14 +303,23 @@ def render_student_home():
     st.session_state.input_nickname = nickname
 
     st.markdown("<p style='text-align: center; font-size: 24px; margin-bottom: 0px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
-    icon_cols = st.columns(5)
-    for i, icon in enumerate(PLAYER_ICONS):
-        with icon_cols[i % 5]:
-            if st.button(icon, key=f"icon_{i}", help="Clique para selecionar este"):
-                st.session_state.selected_icon = icon
 
     selected_icon_value = st.session_state.get("selected_icon", None)
-    st.markdown(f"<p style='text-align:center; padding-top:1px;'>Escolhido: {selected_icon_value if selected_icon_value else 'Nenhum'}</p>", unsafe_allow_html=True)
+    st.markdown(
+        f"<p style='text-align:center; font-size:2.5rem; margin:4px 0;'>"
+        f"{selected_icon_value if selected_icon_value else '❓'}</p>",
+        unsafe_allow_html=True
+    )
+
+    # Emojis em container com scroll horizontal
+    emoji_container = st.container(height=120)
+    with emoji_container:
+        icon_cols = st.columns(10)
+        for i, icon in enumerate(PLAYER_ICONS):
+            with icon_cols[i % 10]:
+                if st.button(icon, key=f"icon_{i}"):
+                    st.session_state.selected_icon = icon
+                    st.rerun()
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
@@ -554,18 +563,20 @@ def render_game():
         if st.session_state.get("answer_time") is None:
             st.session_state.answer_time = time.time()
 
-        # Timer em JavaScript real (countdown ao vivo, não estático)
+        # Timer em JavaScript real (countdown ao vivo)
+        game_time_limit = current_game.time_limit
         elapsed_ms = int((time.time() - st.session_state.answer_time) * 1000)
+        limit_ms = game_time_limit * 1000
         timer_js = f"""
         <div id="kahoot-timer" style="text-align:center;margin-bottom:10px;">
-            <span id="timer-text" style="font-size:1.3rem;font-weight:bold;color:#4CAF50;">⏱ 20s</span>
+            <span id="timer-text" style="font-size:1.3rem;font-weight:bold;color:#4CAF50;">⏱ {game_time_limit}s</span>
             <div style="background:#e0e0e0;border-radius:10px;height:8px;margin-top:5px;">
                 <div id="timer-bar" style="background:#4CAF50;width:100%;height:8px;border-radius:10px;transition:width 0.5s linear;"></div>
             </div>
         </div>
         <script>
         (function() {{
-            const LIMIT = 20000;
+            const LIMIT = {limit_ms};
             const elapsed0 = {elapsed_ms};
             const start = Date.now() - elapsed0;
             const txt = document.getElementById('timer-text');
@@ -578,7 +589,7 @@ def render_game():
                 const pct = (remaining / LIMIT) * 100;
                 let color = '#4CAF50';
                 if (remaining < 5000) color = '#F44336';
-                else if (remaining < 10000) color = '#FF9800';
+                else if (remaining < LIMIT * 0.5) color = '#FF9800';
                 txt.textContent = '⏱ ' + secs + 's';
                 txt.style.color = color;
                 bar.style.width = pct + '%';
@@ -603,8 +614,8 @@ def render_game():
 
         all_cols = [row1_cols[0], row1_cols[1], row2_cols[0], row2_cols[1]]
 
+        clicked_option = None
         for i_opt, option in enumerate(current_options):
-            button_id = f"option_{i_opt}_{current_q_idx_game}_{player_name_session}"
             btn_label = f"{kahoot_shapes[i_opt]}  {option}"
 
             with all_cols[i_opt]:
@@ -614,48 +625,9 @@ def render_game():
                     help="Clique para selecionar esta resposta",
                     use_container_width=True
                 ):
-                    # Debounce check
-                    if not button_debouncer.is_allowed(button_id):
-                        st.warning("Por favor, aguarde antes de responder novamente.")
-                        time.sleep(1)
-                        st.rerun()
-                        return
+                    clicked_option = i_opt
 
-                    # Processar resposta
-                    with st.spinner("Registrando sua resposta..."):
-                        try:
-                            time_taken = time.time() - st.session_state.answer_time
-                            st.session_state.answer_time = None
-
-                            is_correct, points, streak = current_game.record_answer(
-                                player_name_session, i_opt, time_taken
-                            )
-
-                            if is_correct is None:
-                                st.warning("Erro ao registrar resposta. Tente novamente.")
-                                button_debouncer.reset(button_id)
-                            elif is_correct:
-                                streak_text = f" \U0001f525x{streak}" if streak >= 2 else ""
-                                st.markdown(
-                                    f"<div class='result-correct'>✓ Correto! +{points} pontos{streak_text}</div>",
-                                    unsafe_allow_html=True
-                                )
-                                time.sleep(2)
-                            else:
-                                st.markdown(
-                                    f"<div class='result-incorrect'>✗ Incorreto</div>",
-                                    unsafe_allow_html=True
-                                )
-                                time.sleep(2)
-
-                        except Exception as e:
-                            logger.error(f"Error recording answer: {e}")
-                            st.error("Problema de conexão. Sua resposta pode não ter sido registrada.")
-                            button_debouncer.reset(button_id)
-
-                    st.rerun()
-
-        # Unique key per question forces Streamlit to re-render the component
+        # Color + uniform height + centered text for Kahoot buttons
         color_js = f"""
         <script>
         (function() {{
@@ -665,6 +637,7 @@ def render_game():
                 try {{
                     const doc = window.parent.document;
                     const buttons = doc.querySelectorAll('button[kind="secondary"], button[kind="primary"], [data-testid*="stBaseButton"]');
+                    var kahootBtns = [];
                     buttons.forEach(function(btn) {{
                         const text = btn.textContent || '';
                         for (const [shape, color] of Object.entries(SHAPES)) {{
@@ -673,16 +646,39 @@ def render_game():
                                 btn.style.setProperty('color', 'white', 'important');
                                 btn.style.setProperty('border', 'none', 'important');
                                 btn.style.setProperty('border-radius', '8px', 'important');
-                                btn.style.setProperty('min-height', '70px', 'important');
-                                btn.style.setProperty('font-size', '1rem', 'important');
+                                btn.style.setProperty('font-size', '1.05rem', 'important');
                                 btn.style.setProperty('font-weight', 'bold', 'important');
                                 btn.style.setProperty('box-shadow', '0 4px 6px rgba(0,0,0,0.2)', 'important');
+                                btn.style.setProperty('display', 'flex', 'important');
+                                btn.style.setProperty('align-items', 'center', 'important');
+                                btn.style.setProperty('justify-content', 'center', 'important');
+                                btn.style.setProperty('text-align', 'center', 'important');
+                                btn.style.setProperty('padding', '12px 8px', 'important');
                                 const p = btn.querySelector('p');
-                                if (p) p.style.setProperty('color', 'white', 'important');
+                                if (p) {{
+                                    p.style.setProperty('color', 'white', 'important');
+                                    p.style.setProperty('font-size', '1.05rem', 'important');
+                                    p.style.setProperty('text-align', 'center', 'important');
+                                    p.style.setProperty('margin', '0', 'important');
+                                }}
+                                kahootBtns.push(btn);
                                 break;
                             }}
                         }}
                     }});
+                    if (kahootBtns.length > 1) {{
+                        var maxH = 0;
+                        kahootBtns.forEach(function(b) {{
+                            b.style.setProperty('height', 'auto', 'important');
+                            var h = b.scrollHeight;
+                            if (h > maxH) maxH = h;
+                        }});
+                        maxH = Math.max(maxH, 80);
+                        kahootBtns.forEach(function(b) {{
+                            b.style.setProperty('min-height', maxH + 'px', 'important');
+                            b.style.setProperty('height', maxH + 'px', 'important');
+                        }});
+                    }}
                 }} catch(e) {{}}
             }}
             colorButtons();
@@ -700,6 +696,48 @@ def render_game():
         </script>
         """
         html(color_js, height=0)
+
+        # Feedback area (fixed position below all 4 buttons)
+        if clicked_option is not None:
+            button_id = f"option_{clicked_option}_{current_q_idx_game}_{player_name_session}"
+            if not button_debouncer.is_allowed(button_id):
+                st.warning("Por favor, aguarde antes de responder novamente.")
+                time.sleep(1)
+                st.rerun()
+                return
+
+            with st.spinner("Registrando sua resposta..."):
+                try:
+                    time_taken = time.time() - st.session_state.answer_time
+                    st.session_state.answer_time = None
+
+                    is_correct, points, streak = current_game.record_answer(
+                        player_name_session, clicked_option, time_taken
+                    )
+
+                    if is_correct is None:
+                        st.warning("Erro ao registrar resposta. Tente novamente.")
+                        button_debouncer.reset(button_id)
+                    elif is_correct:
+                        streak_text = f" \U0001f525x{streak}" if streak >= 2 else ""
+                        st.markdown(
+                            f"<div class='result-correct'>✓ Correto! +{points} pontos{streak_text}</div>",
+                            unsafe_allow_html=True
+                        )
+                        time.sleep(2)
+                    else:
+                        st.markdown(
+                            f"<div class='result-incorrect'>✗ Incorreto</div>",
+                            unsafe_allow_html=True
+                        )
+                        time.sleep(2)
+
+                except Exception as e:
+                    logger.error(f"Error recording answer: {e}")
+                    st.error("Problema de conexão. Sua resposta pode não ter sido registrada.")
+                    button_debouncer.reset(button_id)
+
+            st.rerun()
     else:
         st.info("✅ Você já respondeu esta pergunta. Aguarde a próxima.")
         time.sleep(2)

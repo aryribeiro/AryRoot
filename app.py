@@ -136,10 +136,10 @@ _GLOBAL_CSS = """<style>
     .status-healthy { background-color: #4CAF50; }
     .status-degraded { background-color: #FF9800; }
     .status-unhealthy { background-color: #F44336; }
-    .question-number { text-align: center; font-size: 1.5rem; margin-bottom: 1rem; color: #555; }
-    .question-text { font-size: 2rem; text-align: center; margin-bottom: 2rem; font-weight: bold; line-height: 1.3; }
-    .result-correct { color: #2E7D32; font-size: 2rem; text-align: center; margin-top: 1rem; animation: bounce 0.6s ease-in-out; }
-    .result-incorrect { color: #C62828; font-size: 2rem; text-align: center; margin-top: 1rem; animation: shake 0.6s ease-in-out; }
+    .question-number { text-align: center; font-size: 1.1rem; margin-bottom: 0.5rem; color: #555; }
+    .question-text { font-size: 1.15rem; text-align: center; margin-bottom: 1rem; font-weight: bold; line-height: 1.4; }
+    .result-correct { color: #2E7D32; font-size: 1.5rem; text-align: center; margin-top: 1rem; animation: bounce 0.6s ease-in-out; }
+    .result-incorrect { color: #C62828; font-size: 1.5rem; text-align: center; margin-top: 1rem; animation: shake 0.6s ease-in-out; }
     .countdown { font-size: 4rem; text-align: center; color: #2E7D32; font-weight: bold; animation: pulse 1s ease-in-out infinite; }
     .custom-ranking-table-container { display: flex; justify-content: center; margin-top: 20px; margin-bottom: 30px; }
     .custom-ranking-table { width: 100%; max-width: 650px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-radius: 10px; overflow: hidden; }
@@ -158,6 +158,7 @@ _GLOBAL_CSS = """<style>
     footer { display: none !important; }
     #MainMenu { display: none !important; }
     .reportview-container .main .block-container, .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; margin-bottom: 0rem !important; }
+    [data-testid="stVerticalBlock"] [data-testid="stButton"] button[key^="icon_"] { font-size: 2rem !important; padding: 6px !important; min-height: 48px !important; }
 </style>"""
 
 st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)

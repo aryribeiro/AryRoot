@@ -904,32 +904,36 @@ def render_teacher_game_control():
         navigate_to("teacher_dashboard")
         st.rerun()
         return
-    
+
     def load_current_game():
         return Game.get_by_code(current_game_code)
-    
+
     result = resilient_teacher_operation(load_current_game)
     current_game = result.data if result.success else None
-    
+
     if not current_game:
         st.error(f"Jogo com código {current_game_code} não encontrado!")
         navigate_to("teacher_dashboard")
         st.rerun()
         return
-    
-    st.markdown("<h1 class='title'>🎮 Controle do Jogo</h1>", unsafe_allow_html=True)
-    
+
+    # Ranking no sidebar (item 5)
+    with st.sidebar:
+        render_current_ranking(current_game)
+
+    st.markdown("<h1 class='title' style='font-size:2rem;'>🎮 Controle do Jogo</h1>", unsafe_allow_html=True)
+
     # Botão voltar
     if st.button("Voltar ao painel", key="back_to_dashboard"):
         navigate_to("teacher_dashboard")
         st.rerun()
-    
+
     # Ações do jogo
     render_game_control_actions(current_game)
-    
+
     # Informações do jogo
     render_game_info(current_game)
-    
+
     # Auto-refresh para jogos ativos
     if current_game and current_game.status in ["waiting", "active"]:
         time.sleep(2)
@@ -937,36 +941,60 @@ def render_teacher_game_control():
 
 def render_game_control_actions(current_game):
     """Renderiza ações de controle do jogo"""
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if current_game.status == "waiting":
-            can_start = len(current_game.players) > 0
-            if st.button("Iniciar jogo", disabled=not can_start, use_container_width=True, type="primary"):
-                start_game_operation(current_game)
-        
-        elif current_game.status == "active":
-            if st.button("▶️ Próxima pergunta", use_container_width=True, type="primary"):
-                next_question_operation(current_game)
-    
-    with col2:
-        if current_game.status != "finished":
-            if st.button("⏹️ Finalizar Jogo", use_container_width=True):
-                finish_game_operation(current_game)
-        else:
-            if st.button("🏆 Ver Resultados Finais", use_container_width=True):
-                navigate_to("game_results")
+    if current_game.status == "waiting":
+        # Seleção de tempo (item 7)
+        st.markdown("**⏱ Tempo por pergunta:**")
+        time_cols = st.columns(3)
+        current_tl = st.session_state.get("selected_time_limit", current_game.time_limit)
+        with time_cols[0]:
+            if st.button("20s", use_container_width=True,
+                         type="primary" if current_tl == 20 else "secondary"):
+                st.session_state.selected_time_limit = 20
+                st.rerun()
+        with time_cols[1]:
+            if st.button("60s", use_container_width=True,
+                         type="primary" if current_tl == 60 else "secondary"):
+                st.session_state.selected_time_limit = 60
+                st.rerun()
+        with time_cols[2]:
+            if st.button("90s", use_container_width=True,
+                         type="primary" if current_tl == 90 else "secondary"):
+                st.session_state.selected_time_limit = 90
                 st.rerun()
 
+        can_start = len(current_game.players) > 0
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("▶️ Iniciar jogo", disabled=not can_start, use_container_width=True, type="primary"):
+                current_game.time_limit = st.session_state.get("selected_time_limit", 20)
+                start_game_operation(current_game)
+        with col2:
+            if st.button("⏹️ Finalizar Jogo", use_container_width=True):
+                finish_game_operation(current_game)
+
+    elif current_game.status == "active":
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("▶️ Próxima pergunta", use_container_width=True, type="primary"):
+                next_question_operation(current_game)
+        with col2:
+            if st.button("⏹️ Finalizar Jogo", use_container_width=True):
+                finish_game_operation(current_game)
+
+    elif current_game.status == "finished":
+        if st.button("🏆 Ver Resultados Finais", use_container_width=True):
+            navigate_to("game_results")
+            st.rerun()
+
 def start_game_operation(game):
-    """Inicia o jogo"""
+    """Inicia o jogo com time_limit configurado"""
     def start_operation():
         game.start_game()
         return True
-    
+
     with st.spinner("Iniciando jogo..."):
         result = resilient_teacher_operation(start_operation)
-    
+
     if result.success:
         st.rerun()
     else:
@@ -1009,22 +1037,16 @@ def finish_game_operation(game):
 def render_game_info(current_game):
     """Renderiza informações do jogo"""
     st.divider()
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.header(f"🔒 Código: `{current_game.code}`")
-        st.caption(f"Status: {current_game.status.capitalize()}")
-        
-        if current_game.status == "waiting":
-            render_waiting_players(current_game)
-        elif current_game.status == "active":
-            render_current_question(current_game)
-        elif current_game.status == "finished":
-            st.success("🎉 Jogo finalizado!")
-            st.markdown("Os resultados finais podem ser visualizados na página de resultados.")
-    
-    with col2:
-        render_current_ranking(current_game)
+    st.header(f"🔒 Código: `{current_game.code}`")
+    st.caption(f"Status: {current_game.status.capitalize()} | Tempo: {current_game.time_limit}s")
+
+    if current_game.status == "waiting":
+        render_waiting_players(current_game)
+    elif current_game.status == "active":
+        render_current_question(current_game)
+    elif current_game.status == "finished":
+        st.success("🎉 Jogo finalizado!")
+        st.markdown("Os resultados finais podem ser visualizados na página de resultados.")
 
 def render_waiting_players(game):
     """Renderiza lista de jogadores esperando"""
@@ -1048,31 +1070,93 @@ def render_waiting_players(game):
                 )
 
 def render_current_question(game):
-    """Renderiza pergunta atual"""
+    """Renderiza pergunta atual com timer e revelação condicional"""
+    from streamlit.components.v1 import html as st_html
+
     q_idx = game.current_question
-    if 0 <= q_idx < len(game.questions):
-        st.markdown(f"**Pergunta {q_idx + 1} de {len(game.questions)}:**")
-        q_data = game.questions[q_idx]
-        st.markdown(f"### {q_data['question']}")
-        
-        st.write("**Opções:**")
-        for i, opt in enumerate(q_data["options"]):
-            is_correct = i == q_data['correct']
-            color = "color:green; font-weight:bold;" if is_correct else ""
+    if not (0 <= q_idx < len(game.questions)):
+        st.warning("Índice da pergunta atual fora do intervalo. O jogo pode ter terminado.")
+        return
+
+    st.markdown(f"**Pergunta {q_idx + 1} de {len(game.questions)}:**")
+    q_data = game.questions[q_idx]
+    st.markdown(f"<p style='font-size:1.05rem;font-weight:bold;'>{q_data['question']}</p>", unsafe_allow_html=True)
+
+    # Contador de respostas
+    total_players = len(game.players)
+    answered_count = sum(
+        1 for player_data in game.players.values()
+        if isinstance(player_data, dict) and
+        any(ans.get('question') == q_idx for ans in player_data.get('answers', []))
+    )
+
+    # Timer do professor (item 9)
+    time_limit = game.time_limit
+    q_start = game.question_start_time
+    elapsed_s = 0
+    if q_start:
+        try:
+            from datetime import datetime as dt
+            elapsed_s = (dt.now() - dt.fromisoformat(q_start)).total_seconds()
+        except (ValueError, TypeError):
+            elapsed_s = 0
+
+    remaining_s = max(0, time_limit - elapsed_s)
+    all_answered = (answered_count >= total_players and total_players > 0)
+    time_expired = (remaining_s <= 0)
+    reveal_answer = all_answered or time_expired
+
+    # Timer visual
+    elapsed_ms = int(elapsed_s * 1000)
+    limit_ms = time_limit * 1000
+    timer_html = f"""
+    <div style="text-align:center;margin:8px 0;">
+        <span id="prof-timer" style="font-size:1.2rem;font-weight:bold;color:#4CAF50;">⏱ {int(remaining_s)}s</span>
+        <div style="background:#e0e0e0;border-radius:8px;height:6px;margin-top:4px;">
+            <div id="prof-bar" style="background:#4CAF50;width:{max(0, remaining_s/time_limit)*100:.0f}%;height:6px;border-radius:8px;transition:width 0.5s linear;"></div>
+        </div>
+    </div>
+    <script>
+    (function() {{
+        const LIMIT = {limit_ms};
+        const elapsed0 = {elapsed_ms};
+        const start = Date.now() - elapsed0;
+        const txt = document.getElementById('prof-timer');
+        const bar = document.getElementById('prof-bar');
+        if (!txt || !bar) return;
+        function tick() {{
+            const elapsed = Date.now() - start;
+            const remaining = Math.max(0, LIMIT - elapsed);
+            const secs = Math.ceil(remaining / 1000);
+            const pct = (remaining / LIMIT) * 100;
+            let color = '#4CAF50';
+            if (remaining < 5000) color = '#F44336';
+            else if (remaining < LIMIT * 0.5) color = '#FF9800';
+            txt.textContent = '⏱ ' + secs + 's';
+            txt.style.color = color;
+            bar.style.width = pct + '%';
+            bar.style.background = color;
+            if (remaining > 0) requestAnimationFrame(tick);
+        }}
+        tick();
+    }})();
+    </script>
+    """
+    st_html(timer_html, height=50)
+
+    st.info(f"📊 {answered_count}/{total_players} jogadores responderam")
+
+    # Opções (item 8: só revelar correta quando tempo acabar ou todos responderem)
+    st.write("**Opções:**")
+    for i, opt in enumerate(q_data["options"]):
+        is_correct = i == q_data['correct']
+        if reveal_answer and is_correct:
             st.markdown(
-                f"<span style='{color}'>{i+1}. {opt}{' (Correta)' if is_correct else ''}</span>",
+                f"<span style='color:green;font-weight:bold;'>✓ {i+1}. {opt} (Correta)</span>",
                 unsafe_allow_html=True
             )
-        
-        # Contador de respostas
-        answered_count = sum(
-            1 for player_data in game.players.values()
-            if isinstance(player_data, dict) and
-            any(ans.get('question') == q_idx for ans in player_data.get('answers', []))
-        )
-        st.info(f"{answered_count} de {len(game.players)} jogadores responderam.")
-    else:
-        st.warning("Índice da pergunta atual fora do intervalo. O jogo pode ter terminado.")
+        else:
+            st.markdown(f"{i+1}. {opt}")
 
 def render_current_ranking(game):
     """Renderiza ranking atual"""
