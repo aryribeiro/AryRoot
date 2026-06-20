@@ -178,12 +178,14 @@ _GLOBAL_JS = """
     const doc = window.parent.document;
 
     // Meta theme-color roxo (barra status mobile)
+    var existing = doc.querySelectorAll('meta[name="theme-color"]');
+    existing.forEach(function(el) { el.remove(); });
     if (!doc.getElementById('aryroot-theme-color')) {
         const meta = doc.createElement('meta');
         meta.id = 'aryroot-theme-color';
         meta.name = 'theme-color';
         meta.content = '#46178F';
-        doc.head.appendChild(meta);
+        doc.head.insertBefore(meta, doc.head.firstChild);
     }
 
     // Scrollbar roxa global
