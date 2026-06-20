@@ -306,9 +306,10 @@ def render_student_home():
     st.markdown("<p style='text-align: center; font-size: 20px; margin-bottom: 0px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
 
     selected_icon_value = st.session_state.get("selected_icon", None)
+    placeholder = "<span style='color:#46178F;font-weight:bold;'>?</span>" if not selected_icon_value else selected_icon_value
     st.markdown(
         f"<p style='text-align:center; font-size:2.8rem; margin:4px 0;'>"
-        f"{selected_icon_value if selected_icon_value else '❓'}</p>",
+        f"{placeholder}</p>",
         unsafe_allow_html=True
     )
 

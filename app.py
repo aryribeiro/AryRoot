@@ -159,7 +159,7 @@ _GLOBAL_CSS = """<style>
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     #MainMenu { display: none !important; }
     footer { display: none !important; }
-    [data-testid="stHeader"] { background: transparent !important; height: 2.5rem !important; }
+    [data-testid="stHeader"] { background: transparent !important; height: 0.5rem !important; min-height: 0 !important; }
     [data-testid="stHeader"] [data-testid="stActionButtonIcon"], [data-testid="stHeader"] a, .stDeployButton, [data-testid="stToolbar"] { display: none !important; }
     [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] { display: none !important; }
     [data-testid="stSidebar"] { min-width: 280px !important; width: 280px !important; transform: none !important; }
