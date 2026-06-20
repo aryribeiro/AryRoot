@@ -361,7 +361,9 @@ def render_home():
     with col2:
         st.markdown(
             "<p style='text-align: center; font-size: 52px; margin-top: -3.5rem; margin-bottom: 0px;'>"
-            "<strong>🎮AryRoot</strong></p>",
+            "<img src='https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f3ae.svg' "
+            "style='height:52px;vertical-align:middle;margin-right:4px;'>"
+            "<strong>AryRoot</strong></p>",
             unsafe_allow_html=True
         )
         st.markdown(

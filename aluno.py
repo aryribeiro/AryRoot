@@ -327,7 +327,7 @@ def render_student_home():
                               on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
                               type="secondary")
 
-    # CSS emojis — injeta no parent via JS (único método que funciona no mobile)
+    # CSS + JS emojis grid — manipula DOM diretamente para funcionar no mobile
     html("""
     <script>
     (function() {
@@ -336,32 +336,61 @@ def render_student_home():
         const style = doc.createElement('style');
         style.id = 'emoji-grid-css';
         style.textContent = `
-            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] {
+            .emoji-grid-fixed {
                 display: grid !important;
                 grid-template-columns: repeat(5, 1fr) !important;
                 gap: 4px !important;
             }
-            [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] > div {
+            .emoji-grid-fixed > div {
                 width: 100% !important;
                 min-width: 0 !important;
-                flex: unset !important;
             }
             [data-testid="stVerticalBlockBorderWrapper"] button {
-                font-size: 2.2rem !important;
-                min-height: 50px !important;
-                padding: 4px !important;
+                font-size: 2rem !important;
+                min-height: 44px !important;
+                padding: 2px !important;
                 background-color: transparent !important;
                 border: 1px solid #e8e8e8 !important;
+                width: 100% !important;
             }
             [data-testid="stVerticalBlockBorderWrapper"] button:hover {
                 background-color: #e8f4fd !important;
-                transform: scale(1.1);
             }
         `;
         doc.head.appendChild(style);
+
+        function fixGrid() {
+            var wrappers = doc.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]');
+            wrappers.forEach(function(w) {
+                var blocks = w.querySelectorAll('[data-testid="stHorizontalBlock"]');
+                blocks.forEach(function(b) {
+                    b.classList.add('emoji-grid-fixed');
+                    b.style.setProperty('display', 'grid', 'important');
+                    b.style.setProperty('grid-template-columns', 'repeat(5, 1fr)', 'important');
+                    b.style.setProperty('gap', '4px', 'important');
+                    var children = b.children;
+                    for (var i = 0; i < children.length; i++) {
+                        children[i].style.setProperty('width', '100%', 'important');
+                        children[i].style.setProperty('min-width', '0', 'important');
+                        children[i].style.setProperty('max-width', '100%', 'important');
+                        children[i].style.setProperty('flex', 'unset', 'important');
+                    }
+                });
+            });
+        }
+        fixGrid();
+        setTimeout(fixGrid, 300);
+        setTimeout(fixGrid, 800);
+        setTimeout(fixGrid, 2000);
+        var obs = new MutationObserver(fixGrid);
+        obs.observe(doc.body, {childList: true, subtree: true});
+        setTimeout(function() { obs.disconnect(); }, 15000);
     })();
     </script>
     """, height=0)
+
+    # Reduzir espaço entre emojis e botão Entrar
+    st.markdown("<div style='margin-top:-1rem;'></div>", unsafe_allow_html=True)
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
