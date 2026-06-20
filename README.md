@@ -1,5 +1,5 @@
 Obs.: caso o app esteja no modo "sleeping" (dormindo) ao entrar, basta clicar no botão que estará disponível e aguardar, para ativar o mesmo. 
-![print](https://github.com/user-attachments/assets/342a211c-30f1-47c2-8a72-d32c4c29d4a4)
+<img width="900" height="715" alt="image" src="https://github.com/user-attachments/assets/732132be-7f6b-497c-b2db-e235cd8de4b9" />
 
 # 🎮 AryRoot - Quiz Game Multiplayer
 
