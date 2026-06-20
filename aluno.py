@@ -316,10 +316,10 @@ def render_student_home():
     [data-testid="stVerticalBlockBorderWrapper"] .stButton > button {
         background-color: transparent !important;
         border: 1px solid #ddd !important;
-        border-radius: 8px !important;
-        padding: 4px !important;
-        font-size: 1.8rem !important;
-        min-height: 44px !important;
+        border-radius: 10px !important;
+        padding: 6px !important;
+        font-size: 2.2rem !important;
+        min-height: 52px !important;
         box-shadow: none !important;
         color: inherit !important;
         transition: transform 0.15s ease !important;
@@ -331,10 +331,10 @@ def render_student_home():
     }
     </style>""", unsafe_allow_html=True)
 
-    # Emojis em grid com scroll vertical compacto
-    emoji_container = st.container(height=150)
+    # Emojis em grid 4 colunas com scroll vertical
+    emoji_container = st.container(height=260)
     with emoji_container:
-        num_cols = 8
+        num_cols = 4
         rows = [PLAYER_ICONS[i:i+num_cols] for i in range(0, len(PLAYER_ICONS), num_cols)]
         for row in rows:
             cols = st.columns(num_cols)
