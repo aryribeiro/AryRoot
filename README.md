@@ -28,9 +28,9 @@ O AryRoot é um web app interativo de quiz multiplayer estilo Kahoot, construíd
     * Escolher um apelido e um ícone/emoji (grid de 90 emojis em 5 colunas, responsivo mobile/desktop).
     * Reconexão automática após F5/reload via query params (`gc` e `pn` persistidos na URL).
     * Sala de espera interativa aguardando o início do jogo.
-    * Responder perguntas de múltipla escolha com botões coloridos estilo Kahoot (▲ vermelho, ◆ azul, ● amarelo, ■ verde).
+    * Responder perguntas de múltipla escolha com botões coloridos (▲ vermelho, ◆ azul, ● amarelo, ■ verde).
     * Timer sincronizado com o servidor (não reinicia com F5 — anti-trapaça).
-    * Pontuação estilo Kahoot: base 1000 pontos com time decay + streak bonus (+100 por acerto consecutivo, cap 500).
+    * Pontuação: base 1000 pontos com time decay + streak bonus (+100 por acerto consecutivo, cap 500).
     * Zero pontos se tempo do servidor expirar, mesmo acertando.
     * Feedback imediato (correto/incorreto com pontos e streak).
     * Visualização de ranking parcial entre as perguntas.
@@ -38,7 +38,7 @@ O AryRoot é um web app interativo de quiz multiplayer estilo Kahoot, construíd
     * Efeitos sonoros e visuais (balões para o vencedor).
     * Trilha sonora de fundo (som.mp3) com autoplay após primeiro clique.
 
-## Sistema de Pontuação (Kahoot-style)
+## Sistema de Pontuação
 
 * **Fórmula base:** `pontos = 1000 * (1 - (tempo_resposta / tempo_limite) / 2)` — mínimo 500 pontos.
 * **Streak bonus:** `min((streak - 1) * 100, 500)` — acertos consecutivos bonificam.
@@ -55,7 +55,7 @@ O AryRoot é um web app interativo de quiz multiplayer estilo Kahoot, construíd
 ## Estrutura do Projeto
 
 * `app.py`: Ponto de entrada principal, roteamento, estilos CSS globais, meta theme-color, trilha sonora e scrollbar customizada.
-* `core.py`: Lógica de negócios — classes `Game` e `Teacher`, SQLite com connection pool, circuit breaker, distributed locks, scoring Kahoot.
+* `core.py`: Lógica de negócios — classes `Game` e `Teacher`, SQLite com connection pool, circuit breaker, distributed locks, scoring.
 * `aluno.py`: Interface do aluno — home, seleção de emoji, sala de espera, game, resultados.
 * `professor.py`: Interface do professor — login, dashboard, controle do jogo, ranking sidebar.
 * `data/`: Diretório do banco SQLite (criado automaticamente).
@@ -69,7 +69,7 @@ O AryRoot é um web app interativo de quiz multiplayer estilo Kahoot, construíd
 * **SQLite** — Banco de dados com connection pool e circuit breaker.
 * **bcrypt** — Hashing seguro de senhas.
 * **python-dotenv** — Gerenciamento de variáveis de ambiente.
-* **JavaScript/CSS injetados** — Timer em tempo real (requestAnimationFrame), botões Kahoot coloridos, scrollbar customizada, theme-color mobile.
+* **JavaScript/CSS injetados** — Timer em tempo real (requestAnimationFrame), botões coloridos, scrollbar customizada, theme-color mobile.
 
 ## Otimizações e Padrões
 
@@ -79,7 +79,7 @@ O AryRoot é um web app interativo de quiz multiplayer estilo Kahoot, construíd
 4. **Deduplicação:** Cache de operações para prevenir registros duplicados.
 5. **Retry com backoff:** Operações de banco com retry exponencial.
 6. **CSS responsivo mobile:** `key=` em containers + CSS `.st-key-{nome}` para impedir stacking de colunas no mobile (breakpoint 640px).
-7. **MutationObserver:** Reaplica estilos em botões Kahoot após rerenders do Streamlit.
+7. **MutationObserver:** Reaplica estilos em botões coloridos após rerenders do Streamlit.
 
 ## Como Executar Localmente
 
@@ -125,5 +125,7 @@ O AryRoot é um web app interativo de quiz multiplayer estilo Kahoot, construíd
 
 ---
 Autor: Ary Ribeiro
+
 Contato: aryribeiro@gmail.com
+
 LinkedIn: https://www.linkedin.com/in/aryribeiro
