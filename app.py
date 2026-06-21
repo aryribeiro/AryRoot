@@ -363,7 +363,7 @@ def render_home():
     with col2:
         st.markdown(
             "<div style='text-align:center; margin-top:-3.5rem; margin-bottom:0;'>"
-            "<img src='/app/static/logo.png' style='max-width:280px; width:100%;'>"
+            "<img src='app/static/logo.png' style='max-width:280px; width:100%;'>"
             "</div>",
             unsafe_allow_html=True
         )
