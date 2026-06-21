@@ -305,10 +305,15 @@ def render_student_home():
 
     st.markdown("<p style='text-align: center; font-size: 20px; margin-bottom: -10px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
 
-    # Ler emoji do query param (vem do JS no html component)
+    # Ler emoji do query param (vem do JS no html component — índice numérico)
     ei_param = st.query_params.get("ei", None)
-    if ei_param and ei_param in PLAYER_ICONS:
-        st.session_state["selected_icon"] = ei_param
+    if ei_param is not None:
+        try:
+            ei_idx = int(ei_param)
+            if 0 <= ei_idx < len(PLAYER_ICONS):
+                st.session_state["selected_icon"] = PLAYER_ICONS[ei_idx]
+        except (ValueError, TypeError):
+            pass
     selected_icon_value = st.session_state.get("selected_icon", None)
     placeholder = "<span style='color:#46178F;font-weight:bold;'>?</span>" if not selected_icon_value else selected_icon_value
     st.markdown(
@@ -319,8 +324,8 @@ def render_student_home():
 
     # Emojis grid HTML/CSS/JS puro (funciona em mobile e desktop)
     emoji_buttons = "".join(
-        f'<button class="emoji-btn" onclick="selectEmoji(this)">{icon}</button>'
-        for icon in PLAYER_ICONS
+        f'<button class="emoji-btn" data-idx="{idx}" onclick="selectEmoji(this)">{icon}</button>'
+        for idx, icon in enumerate(PLAYER_ICONS)
     )
     emoji_html = """
     <style>
@@ -357,9 +362,9 @@ def render_student_home():
         function selectEmoji(btn) {
             document.querySelectorAll('.emoji-btn').forEach(function(b) { b.classList.remove('selected'); });
             btn.classList.add('selected');
-            var icon = btn.textContent.trim();
+            var idx = btn.getAttribute('data-idx');
             var url = new URL(window.parent.location);
-            url.searchParams.set('ei', icon);
+            url.searchParams.set('ei', idx);
             window.parent.location.href = url.toString();
         }
     </script>
