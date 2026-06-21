@@ -305,15 +305,6 @@ def render_student_home():
 
     st.markdown("<p style='text-align: center; font-size: 20px; margin-bottom: -10px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
 
-    # Ler emoji do query param (vem do JS no html component — índice numérico)
-    ei_param = st.query_params.get("ei", None)
-    if ei_param is not None:
-        try:
-            ei_idx = int(ei_param)
-            if 0 <= ei_idx < len(PLAYER_ICONS):
-                st.session_state["selected_icon"] = PLAYER_ICONS[ei_idx]
-        except (ValueError, TypeError):
-            pass
     selected_icon_value = st.session_state.get("selected_icon", None)
     placeholder = "<span style='color:#46178F;font-weight:bold;'>?</span>" if not selected_icon_value else selected_icon_value
     st.markdown(
@@ -322,54 +313,49 @@ def render_student_home():
         unsafe_allow_html=True
     )
 
-    # Emojis grid HTML/CSS/JS puro (funciona em mobile e desktop)
-    emoji_buttons = "".join(
-        f'<button class="emoji-btn" data-idx="{idx}" onclick="selectEmoji(this)">{icon}</button>'
-        for idx, icon in enumerate(PLAYER_ICONS)
-    )
-    emoji_html = """
-    <style>
-        .emoji-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 6px;
-            max-height: 260px;
-            overflow-y: auto;
-            padding: 8px;
-            scrollbar-color: #46178F #f0f0f0;
-            scrollbar-width: thin;
-        }
-        .emoji-grid::-webkit-scrollbar { width: 6px; }
-        .emoji-grid::-webkit-scrollbar-thumb { background: #46178F; border-radius: 3px; }
-        .emoji-grid::-webkit-scrollbar-track { background: #f0f0f0; }
-        .emoji-btn {
-            font-size: 1.8rem;
-            padding: 6px;
-            border: 1px solid #e8e8e8;
-            border-radius: 8px;
-            background: white;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.15s;
-        }
-        .emoji-btn:hover { background: #e8f4fd; transform: scale(1.1); }
-        .emoji-btn.selected { border: 2px solid #46178F; background: #f3e8ff; }
-    </style>
-    <div class="emoji-grid">
-        """ + emoji_buttons + """
-    </div>
+    # Emojis — botões Streamlit reais (on_click funciona) sem st.columns
+    # Layout via CSS grid aplicado no container pai
+    emoji_container = st.container(height=280)
+    with emoji_container:
+        for idx, icon in enumerate(PLAYER_ICONS):
+            st.button(icon, key=f"icon_{idx}",
+                      on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
+                      type="secondary")
+
+    # CSS grid no container de emojis (injeta no parent — funciona mobile e desktop)
+    html("""
     <script>
-        function selectEmoji(btn) {
-            document.querySelectorAll('.emoji-btn').forEach(function(b) { b.classList.remove('selected'); });
-            btn.classList.add('selected');
-            var idx = btn.getAttribute('data-idx');
-            var url = new URL(window.parent.location);
-            url.searchParams.set('ei', idx);
-            window.parent.location.href = url.toString();
-        }
+    (function() {
+        const doc = window.parent.document;
+        if (doc.getElementById('emoji-grid-css')) return;
+        const style = doc.createElement('style');
+        style.id = 'emoji-grid-css';
+        style.textContent = `
+            [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"] {
+                display: grid !important;
+                grid-template-columns: repeat(5, 1fr) !important;
+                gap: 4px !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"] > div {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] button {
+                font-size: 2rem !important;
+                min-height: 44px !important;
+                padding: 4px !important;
+                background-color: transparent !important;
+                border: 1px solid #e8e8e8 !important;
+                width: 100% !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"] button:hover {
+                background-color: #e8f4fd !important;
+            }
+        `;
+        doc.head.appendChild(style);
+    })();
     </script>
-    """
-    html(emoji_html, height=290)
+    """, height=0)
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
