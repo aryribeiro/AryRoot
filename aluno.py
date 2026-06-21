@@ -304,12 +304,22 @@ def render_student_home():
     st.session_state.input_nickname = nickname
 
     st.markdown("""<style>
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] {
+        display: grid !important;
+        grid-template-columns: repeat(5, 1fr) !important;
+        gap: 4px !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] > div {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
     [data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-secondary"] {
         font-size: 2rem !important;
         min-height: 44px !important;
         padding: 4px !important;
         background-color: transparent !important;
         border: 1px solid #e8e8e8 !important;
+        width: 100% !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-secondary"]:hover {
         background-color: #e8f4fd !important;
