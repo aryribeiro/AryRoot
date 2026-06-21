@@ -303,6 +303,18 @@ def render_student_home():
     st.session_state.input_game_code = game_code
     st.session_state.input_nickname = nickname
 
+    st.markdown("""<style>
+    [data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-secondary"] {
+        font-size: 2rem !important;
+        min-height: 44px !important;
+        padding: 4px !important;
+        background-color: transparent !important;
+        border: 1px solid #e8e8e8 !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-secondary"]:hover {
+        background-color: #e8f4fd !important;
+    }
+    </style>""", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; font-size: 20px; margin-bottom: -10px;'>🔎Escolha o Emoji</p>", unsafe_allow_html=True)
 
     selected_icon_value = st.session_state.get("selected_icon", None)
@@ -313,46 +325,53 @@ def render_student_home():
         unsafe_allow_html=True
     )
 
-    # Emojis — botões Streamlit reais (on_click funciona) sem st.columns
-    # Layout via CSS grid aplicado no container pai
+    # Emojis em grid 5 colunas com scroll vertical
     emoji_container = st.container(height=280)
     with emoji_container:
-        for idx, icon in enumerate(PLAYER_ICONS):
-            st.button(icon, key=f"icon_{idx}",
-                      on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
-                      type="secondary")
+        num_cols = 5
+        rows = [PLAYER_ICONS[i:i+num_cols] for i in range(0, len(PLAYER_ICONS), num_cols)]
+        for row in rows:
+            cols = st.columns(num_cols, gap="small")
+            for idx, icon in enumerate(row):
+                with cols[idx]:
+                    global_idx = PLAYER_ICONS.index(icon)
+                    st.button(icon, key=f"icon_{global_idx}",
+                              on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
+                              type="secondary")
 
-    # CSS grid no container de emojis (injeta no parent — funciona mobile e desktop)
+    # Força 5 colunas no mobile via JS (setProperty nos inline styles)
     html("""
     <script>
     (function() {
-        const doc = window.parent.document;
-        if (doc.getElementById('emoji-grid-css')) return;
-        const style = doc.createElement('style');
-        style.id = 'emoji-grid-css';
-        style.textContent = `
-            [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"] {
-                display: grid !important;
-                grid-template-columns: repeat(5, 1fr) !important;
-                gap: 4px !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"] > div {
-                width: 100% !important;
-                min-width: 0 !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] button {
-                font-size: 2rem !important;
-                min-height: 44px !important;
-                padding: 4px !important;
-                background-color: transparent !important;
-                border: 1px solid #e8e8e8 !important;
-                width: 100% !important;
-            }
-            [data-testid="stVerticalBlockBorderWrapper"] button:hover {
-                background-color: #e8f4fd !important;
-            }
-        `;
-        doc.head.appendChild(style);
+        var doc = window.parent.document;
+        function fix() {
+            var containers = doc.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]');
+            containers.forEach(function(c) {
+                var hBlocks = c.querySelectorAll('[data-testid="stHorizontalBlock"]');
+                if (hBlocks.length >= 3) {
+                    hBlocks.forEach(function(row) {
+                        row.style.setProperty('display', 'flex', 'important');
+                        row.style.setProperty('flex-direction', 'row', 'important');
+                        row.style.setProperty('flex-wrap', 'nowrap', 'important');
+                        row.style.setProperty('gap', '4px', 'important');
+                        var cols = row.children;
+                        for (var i = 0; i < cols.length; i++) {
+                            cols[i].style.setProperty('flex', '1 1 0', 'important');
+                            cols[i].style.setProperty('min-width', '0', 'important');
+                            cols[i].style.setProperty('width', '20%', 'important');
+                            cols[i].style.setProperty('max-width', '20%', 'important');
+                        }
+                    });
+                }
+            });
+        }
+        fix();
+        setTimeout(fix, 200);
+        setTimeout(fix, 600);
+        setTimeout(fix, 1500);
+        var obs = new MutationObserver(fix);
+        obs.observe(doc.body, {childList: true, subtree: true});
+        setTimeout(function() { obs.disconnect(); }, 10000);
     })();
     </script>
     """, height=0)

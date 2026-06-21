@@ -170,6 +170,8 @@ _GLOBAL_CSS = """<style>
     .stApp { padding-top: 0 !important; margin-top: 0 !important; }
     .stApp > header + div, .stMainBlockContainer { padding-top: 0 !important; margin-top: 0 !important; }
     .stApp [data-testid="stAppViewBlockContainer"] { padding-top: 0 !important; }
+    iframe[height="0"] { display: none !important; margin: 0 !important; padding: 0 !important; }
+    .element-container:has(iframe[height="0"]) { margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
 </style>"""
 
 st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
@@ -360,8 +362,9 @@ def render_home():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(
-            "<p style='text-align: center; font-size: 52px; margin-top: -3.5rem; margin-bottom: 0px;'>"
-            "<strong>🎮AryRoot</strong></p>",
+            "<div style='text-align:center; margin-top:-3.5rem; margin-bottom:0;'>"
+            "<img src='/app/static/logo.png' style='max-width:280px; width:100%;'>"
+            "</div>",
             unsafe_allow_html=True
         )
         st.markdown(
