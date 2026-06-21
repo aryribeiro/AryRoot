@@ -577,7 +577,12 @@ def render_game():
         return
 
     # Interface da pergunta
-    st.markdown("<h1 class='title'>🎮 AryRoot</h1>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='text-align:center; margin-bottom:0;'>"
+        "<img src='app/static/logo.png' style='max-width:200px; width:100%;'>"
+        "</div>",
+        unsafe_allow_html=True
+    )
     st.markdown(
         f"<div class='question-number'>Pergunta {current_q_idx_game + 1} de {len(current_game.questions)}</div>", 
         unsafe_allow_html=True
