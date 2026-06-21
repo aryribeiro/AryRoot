@@ -304,16 +304,15 @@ def render_student_home():
     st.session_state.input_nickname = nickname
 
     st.markdown("""<style>
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] {
-        display: grid !important;
-        grid-template-columns: repeat(5, 1fr) !important;
-        gap: 4px !important;
+    .st-key-emoji_grid [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] > div {
-        width: 100% !important;
+    .st-key-emoji_grid [data-testid="stColumn"] {
         min-width: 0 !important;
+        flex: 1 1 0 !important;
+        width: 20% !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-secondary"] {
+    .st-key-emoji_grid button[data-testid="stBaseButton-secondary"] {
         font-size: 2rem !important;
         min-height: 44px !important;
         padding: 4px !important;
@@ -321,7 +320,7 @@ def render_student_home():
         border: 1px solid #e8e8e8 !important;
         width: 100% !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-secondary"]:hover {
+    .st-key-emoji_grid button[data-testid="stBaseButton-secondary"]:hover {
         background-color: #e8f4fd !important;
     }
     </style>""", unsafe_allow_html=True)
@@ -335,13 +334,19 @@ def render_student_home():
         unsafe_allow_html=True
     )
 
-    # Emojis — botões flat no container, grid forçado via JS
-    emoji_container = st.container(height=280)
+    # Emojis em grid 5 colunas (key permite CSS scoped)
+    emoji_container = st.container(height=280, key="emoji_grid")
     with emoji_container:
-        for idx, icon in enumerate(PLAYER_ICONS):
-            st.button(icon, key=f"icon_{idx}",
-                      on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
-                      type="secondary")
+        num_cols = 5
+        rows = [PLAYER_ICONS[i:i+num_cols] for i in range(0, len(PLAYER_ICONS), num_cols)]
+        for row in rows:
+            cols = st.columns(num_cols, gap="small")
+            for idx, icon in enumerate(row):
+                with cols[idx]:
+                    global_idx = PLAYER_ICONS.index(icon)
+                    st.button(icon, key=f"icon_{global_idx}",
+                              on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
+                              type="secondary")
 
 
     # Validação e entrada no jogo

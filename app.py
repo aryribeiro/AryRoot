@@ -216,34 +216,6 @@ _GLOBAL_JS = """
         doc.head.appendChild(style);
     }
 
-    // Grid 5 colunas para emojis (container com 20+ botões)
-    function fixEmojiGrid() {
-        var wrappers = doc.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]');
-        wrappers.forEach(function(w) {
-            var buttons = w.querySelectorAll('button');
-            if (buttons.length >= 20) {
-                var vBlock = w.querySelector('[data-testid="stVerticalBlock"]');
-                if (vBlock && vBlock.style.display !== 'grid') {
-                    vBlock.style.setProperty('display', 'grid', 'important');
-                    vBlock.style.setProperty('grid-template-columns', 'repeat(5, 1fr)', 'important');
-                    vBlock.style.setProperty('gap', '4px', 'important');
-                    var children = vBlock.children;
-                    for (var i = 0; i < children.length; i++) {
-                        children[i].style.setProperty('width', '100%', 'important');
-                        children[i].style.setProperty('min-width', '0', 'important');
-                    }
-                }
-            }
-        });
-    }
-    fixEmojiGrid();
-    setTimeout(fixEmojiGrid, 500);
-    setTimeout(fixEmojiGrid, 1500);
-    setTimeout(fixEmojiGrid, 3000);
-    var emojiObs = new MutationObserver(fixEmojiGrid);
-    emojiObs.observe(doc.body, {childList: true, subtree: true});
-    setTimeout(function() { emojiObs.disconnect(); }, 15000);
-
     // Trilha sonora
     if (!doc.getElementById('aryroot-bgm')) {
         const audio = doc.createElement('audio');
