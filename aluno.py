@@ -333,41 +333,6 @@ def render_student_home():
                       on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
                       type="secondary")
 
-    # JS: encontra o container com muitos botões e aplica grid 5 colunas
-    html("""
-    <script>
-    (function() {
-        var doc = window.parent.document;
-        function fix() {
-            var wrappers = doc.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]');
-            wrappers.forEach(function(w) {
-                var buttons = w.querySelectorAll('button');
-                if (buttons.length >= 20) {
-                    var vBlock = w.querySelector('[data-testid="stVerticalBlock"]');
-                    if (vBlock) {
-                        vBlock.style.setProperty('display', 'grid', 'important');
-                        vBlock.style.setProperty('grid-template-columns', 'repeat(5, 1fr)', 'important');
-                        vBlock.style.setProperty('gap', '4px', 'important');
-                        vBlock.style.setProperty('align-items', 'start', 'important');
-                        var children = vBlock.children;
-                        for (var i = 0; i < children.length; i++) {
-                            children[i].style.setProperty('width', '100%', 'important');
-                            children[i].style.setProperty('min-width', '0', 'important');
-                        }
-                    }
-                }
-            });
-        }
-        fix();
-        setTimeout(fix, 300);
-        setTimeout(fix, 800);
-        setTimeout(fix, 2000);
-        var obs = new MutationObserver(fix);
-        obs.observe(doc.body, {childList: true, subtree: true});
-        setTimeout(function() { obs.disconnect(); }, 12000);
-    })();
-    </script>
-    """, height=0)
 
     # Validação e entrada no jogo
     can_join = bool(game_code and nickname and selected_icon_value)
