@@ -325,53 +325,46 @@ def render_student_home():
         unsafe_allow_html=True
     )
 
-    # Emojis em grid 5 colunas com scroll vertical
+    # Emojis — botões flat no container, grid forçado via JS
     emoji_container = st.container(height=280)
     with emoji_container:
-        num_cols = 5
-        rows = [PLAYER_ICONS[i:i+num_cols] for i in range(0, len(PLAYER_ICONS), num_cols)]
-        for row in rows:
-            cols = st.columns(num_cols, gap="small")
-            for idx, icon in enumerate(row):
-                with cols[idx]:
-                    global_idx = PLAYER_ICONS.index(icon)
-                    st.button(icon, key=f"icon_{global_idx}",
-                              on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
-                              type="secondary")
+        for idx, icon in enumerate(PLAYER_ICONS):
+            st.button(icon, key=f"icon_{idx}",
+                      on_click=lambda ic=icon: st.session_state.update({"selected_icon": ic}),
+                      type="secondary")
 
-    # Força 5 colunas no mobile via JS (setProperty nos inline styles)
+    # JS: encontra o container com muitos botões e aplica grid 5 colunas
     html("""
     <script>
     (function() {
         var doc = window.parent.document;
         function fix() {
-            var containers = doc.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]');
-            containers.forEach(function(c) {
-                var hBlocks = c.querySelectorAll('[data-testid="stHorizontalBlock"]');
-                if (hBlocks.length >= 3) {
-                    hBlocks.forEach(function(row) {
-                        row.style.setProperty('display', 'flex', 'important');
-                        row.style.setProperty('flex-direction', 'row', 'important');
-                        row.style.setProperty('flex-wrap', 'nowrap', 'important');
-                        row.style.setProperty('gap', '4px', 'important');
-                        var cols = row.children;
-                        for (var i = 0; i < cols.length; i++) {
-                            cols[i].style.setProperty('flex', '1 1 0', 'important');
-                            cols[i].style.setProperty('min-width', '0', 'important');
-                            cols[i].style.setProperty('width', '20%', 'important');
-                            cols[i].style.setProperty('max-width', '20%', 'important');
+            var wrappers = doc.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]');
+            wrappers.forEach(function(w) {
+                var buttons = w.querySelectorAll('button');
+                if (buttons.length >= 20) {
+                    var vBlock = w.querySelector('[data-testid="stVerticalBlock"]');
+                    if (vBlock) {
+                        vBlock.style.setProperty('display', 'grid', 'important');
+                        vBlock.style.setProperty('grid-template-columns', 'repeat(5, 1fr)', 'important');
+                        vBlock.style.setProperty('gap', '4px', 'important');
+                        vBlock.style.setProperty('align-items', 'start', 'important');
+                        var children = vBlock.children;
+                        for (var i = 0; i < children.length; i++) {
+                            children[i].style.setProperty('width', '100%', 'important');
+                            children[i].style.setProperty('min-width', '0', 'important');
                         }
-                    });
+                    }
                 }
             });
         }
         fix();
-        setTimeout(fix, 200);
-        setTimeout(fix, 600);
-        setTimeout(fix, 1500);
+        setTimeout(fix, 300);
+        setTimeout(fix, 800);
+        setTimeout(fix, 2000);
         var obs = new MutationObserver(fix);
         obs.observe(doc.body, {childList: true, subtree: true});
-        setTimeout(function() { obs.disconnect(); }, 10000);
+        setTimeout(function() { obs.disconnect(); }, 12000);
     })();
     </script>
     """, height=0)
